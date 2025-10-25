@@ -1,0 +1,55 @@
+{# BOUNDARY: PLATFORM MANAGER #}
+{% extends 'base.html' %}
+{% block content %}
+
+{% if view == 'dashboard' %}
+<section class="panel">
+  <h2>Platform Manager</h2>
+  <form method="get">
+    <input name="q" placeholder="Search categories" value="{{ q }}">
+    <button class="btn">Search</button>
+  </form>
+  <form method="post" action="{{ url_for('boundary.pm_create_cat') }}" class="grid2 mt">
+    <input name="name" placeholder="New category">
+    <button class="btn btn-green">Create</button>
+  </form>
+  <table class="table">
+    <tr><th>ID</th><th>Name</th><th>Actions</th></tr>
+    {% for c in categories %}
+    <tr>
+      <td>{{ c.id }}</td><td>{{ c.name }}</td>
+      <td>
+        <form method="post" action="{{ url_for('boundary.pm_update_cat', cat_id=c.id) }}" class="grid2">
+          <input name="name" value="{{ c.name }}"><button class="btn">Update</button>
+        </form>
+        <form method="post" action="{{ url_for('boundary.pm_delete_cat', cat_id=c.id) }}"><button class="btn btn-red">Delete</button></form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  <a class="btn" href="{{ url_for('boundary.pm_reports') }}">Reports</a>
+</section>
+{% endif %}
+
+{% if view == 'reports' %}
+<section class="panel">
+  <h2>Reports ({{ scope }})</h2>
+  <nav class="tabs">
+    <a href="{{ url_for('boundary.pm_reports', scope='daily') }}" class="tab">Daily</a>
+    <a href="{{ url_for('boundary.pm_reports', scope='weekly') }}" class="tab">Weekly</a>
+    <a href="{{ url_for('boundary.pm_reports', scope='monthly') }}" class="tab">Monthly</a>
+  </nav>
+  <div class="grid2">
+    <div>
+      <h3>Requests created</h3>
+      <ul>{% for d, c in data['requests'] %}<li>{{ d }} — {{ c }}</li>{% else %}<li>No data</li>{% endfor %}</ul>
+    </div>
+    <div>
+      <h3>Services completed</h3>
+      <ul>{% for d, c in data['completed'] %}<li>{{ d }} — {{ c }}</li>{% else %}<li>No data</li>{% endfor %}</ul>
+    </div>
+  </div>
+</section>
+{% endif %}
+
+{% endblock %}

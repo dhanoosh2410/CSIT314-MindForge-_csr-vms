@@ -1,0 +1,56 @@
+{# BOUNDARY: CSR  #}
+{% extends 'base.html' %}
+{% block content %}
+
+{% if view == 'dashboard' %}
+<section class="panel">
+  <h2>CSR Representative</h2>
+  <form method="get">
+    <label>Service Category</label>
+    <select name="category_id">
+      <option value="">All</option>
+      {% for c in categories %}<option value="{{ c.id }}" {{ 'selected' if category_id==c.id }}>{{ c.name }}</option>{% endfor %}
+    </select>
+    <button class="btn">Filter</button>
+  </form>
+
+  <h3>Available PIN Requests</h3>
+  <table class="table">
+    <tr><th>Title</th><th>Category</th><th>Views</th><th>Shortlisted</th><th>Action</th></tr>
+    {% for r in requests %}
+    <tr>
+      <td>{{ r.title }}</td><td>{{ r.category.name }}</td><td>{{ r.views_count }}</td><td>{{ r.shortlist_count }}</td>
+      <td><form method="post" action="{{ url_for('boundary.csr_save', req_id=r.id) }}"><button class="btn btn-green">Save</button></form></td>
+    </tr>
+    {% endfor %}
+  </table>
+
+  <h3>My Shortlist</h3>
+  <ul>
+    {% for s in shortlist %}<li>{{ s.request.title }} ({{ s.request.category.name }})</li>{% else %}<li>No saved requests.</li>{% endfor %}
+  </ul>
+  <a class="btn" href="{{ url_for('boundary.csr_history') }}">View History</a>
+</section>
+{% endif %}
+
+{% if view == 'history' %}
+<section class="panel">
+  <h2>CSR - Completed Services</h2>
+  <form method="get">
+    <label>Category</label>
+    <select name="category_id">
+      <option value="">All</option>
+      {% for c in categories %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+    </select>
+    <label>Start</label><input type="date" name="start">
+    <label>End</label><input type="date" name="end">
+    <button class="btn">Filter</button>
+  </form>
+  <table class="table">
+    <tr><th>Date</th><th>Request</th><th>Category</th></tr>
+    {% for h in items %}<tr><td>{{ h.date_completed.date() }}</td><td>{{ h.request.title if h.request else '-' }}</td><td>{{ h.category.name if h.category else '-' }}</td></tr>{% endfor %}
+  </table>
+</section>
+{% endif %}
+
+{% endblock %}

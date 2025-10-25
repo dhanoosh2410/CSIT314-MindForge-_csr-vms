@@ -1,0 +1,67 @@
+{# BOUNDARY: Person-In-Need #}
+{% extends 'base.html' %}
+{% block content %}
+
+{% if view == 'dashboard' %}
+<section class="panel">
+  <h2>Person-In-Need</h2>
+  <form method="post" action="{{ url_for('boundary.pin_create_req') }}" class="grid2">
+    <input name="title" placeholder="Request title">
+    <textarea name="description" placeholder="Describe your need"></textarea>
+    <select name="category_id">
+      {% for c in categories %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+    </select>
+    <button class="btn btn-green">Create</button>
+  </form>
+
+  <form method="get" class="mt">
+    <input name="q" placeholder="Search my requests" value="{{ q }}">
+    <button class="btn">Search</button>
+  </form>
+
+  <h3>My Requests</h3>
+  <table class="table">
+    <tr><th>Title</th><th>Category</th><th>Status</th><th>Views</th><th>Shortlists</th><th>Actions</th></tr>
+    {% for r in reqs %}
+    <tr>
+      <td>{{ r.title }}</td><td>{{ r.category.name }}</td><td>{{ r.status }}</td><td>{{ r.views_count }}</td><td>{{ r.shortlist_count }}</td>
+      <td>
+        <form method="post" action="{{ url_for('boundary.pin_update_req', req_id=r.id) }}" class="grid2">
+          <input name="title" value="{{ r.title }}">
+          <textarea name="description">{{ r.description }}</textarea>
+          <select name="category_id">
+            {% for c in categories %}<option value="{{ c.id }}" {{ 'selected' if c.id==r.category_id }}>{{ c.name }}</option>{% endfor %}
+          </select>
+          <select name="status"><option {{'selected' if r.status=='open'}}>open</option><option {{'selected' if r.status=='completed'}}>completed</option></select>
+          <button class="btn">Update</button>
+        </form>
+        <form method="post" action="{{ url_for('boundary.pin_delete_req', req_id=r.id) }}"><button class="btn btn-red">Delete</button></form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  <a class="btn" href="{{ url_for('boundary.pin_history') }}">View Completed Matches</a>
+</section>
+{% endif %}
+
+{% if view == 'history' %}
+<section class="panel">
+  <h2>PIN - Completed Matches</h2>
+  <form method="get">
+    <label>Category</label>
+    <select name="category_id">
+      <option value="">All</option>
+      {% for c in categories %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+    </select>
+    <label>Start</label><input type="date" name="start">
+    <label>End</label><input type="date" name="end">
+    <button class="btn">Filter</button>
+  </form>
+  <table class="table">
+    <tr><th>Date</th><th>Request</th><th>Category</th></tr>
+    {% for h in items %}<tr><td>{{ h.date_completed.date() }}</td><td>{{ h.request.title if h.request else '-' }}</td><td>{{ h.category.name if h.category else '-' }}</td></tr>{% endfor %}
+  </table>
+</section>
+{% endif %}
+
+{% endblock %}

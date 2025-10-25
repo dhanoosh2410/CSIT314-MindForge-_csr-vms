@@ -1,0 +1,86 @@
+{# ================================
+   BOUNDARY: USER ADMIN 
+   Sections:
+   - DASHBOARD  (view == 'dashboard')
+   - USERS PAGE (view == 'users')
+   ================================= #}
+{% extends 'base.html' %}
+{% block content %}
+
+{# ---------- DASHBOARD ---------- #}
+{% if view == 'dashboard' %}
+<div class="flex">
+  <aside class="sidebar"><div class="menu-title">User Management ▾</div></aside>
+  <section class="panel">
+    <h2>User Admin</h2>
+    <p>Manage user accounts and profiles.</p>
+    <a class="btn" href="{{ url_for('boundary.admin_users') }}">Open Users</a>
+  </section>
+</div>
+{% endif %}
+
+{# ---------- USERS ---------- #}
+{% if view == 'users' %}
+<div class="flex">
+  <aside class="sidebar"><div class="menu-title">User Management ▾</div></aside>
+  <section class="panel">
+    <h2>Users & Profiles</h2>
+
+    <form method="get">
+      <input name="q" placeholder="Search users/profiles" value="{{ q }}">
+      <button class="btn">Search</button>
+    </form>
+
+    <h3>Create User</h3>
+    <form method="post" action="{{ url_for('boundary.admin_create_user') }}" class="grid2">
+      <select name="role">
+        <option>User Admin</option><option>CSR Representative</option>
+        <option>Person in Need</option><option>Platform Manager</option>
+      </select>
+      <input name="username" placeholder="username">
+      <input name="password" placeholder="password">
+      <label><input type="checkbox" name="active" checked> active</label>
+      <input name="full_name" placeholder="full name">
+      <input name="email" placeholder="email">
+      <input name="phone" placeholder="phone">
+      <button class="btn btn-green">Create</button>
+    </form>
+
+    <h3>Accounts</h3>
+    <table class="table">
+      <tr><th>ID</th><th>Role</th><th>Username</th><th>Active</th><th>Profile</th><th>Actions</th></tr>
+      {% for u in users %}
+      <tr>
+        <td>{{ u.id }}</td>
+        <td>{{ u.role }}</td>
+        <td>{{ u.username }}</td>
+        <td>{{ 'Yes' if u.is_active else 'No' }}</td>
+        <td>{{ u.profile.full_name if u.profile else '-' }} / {{ u.profile.email if u.profile else '-' }}</td>
+        <td>
+          <form method="post" action="{{ url_for('boundary.admin_update_user', user_id=u.id) }}" class="grid2">
+            <select name="role">
+              <option {{'selected' if u.role=='User Admin'}} >User Admin</option>
+              <option {{'selected' if u.role=='CSR Representative'}}>CSR Representative</option>
+              <option {{'selected' if u.role=='Person in Need'}}>Person in Need</option>
+              <option {{'selected' if u.role=='Platform Manager'}}>Platform Manager</option>
+            </select>
+            <input name="username" value="{{ u.username }}">
+            <input name="password" placeholder="(leave blank to keep)">
+            <label><input type="checkbox" name="active" {{ 'checked' if u.is_active }}> active</label>
+            <input name="full_name" value="{{ u.profile.full_name if u.profile else '' }}">
+            <input name="email" value="{{ u.profile.email if u.profile else '' }}">
+            <input name="phone" value="{{ u.profile.phone if u.profile else '' }}">
+            <button class="btn">Update</button>
+          </form>
+          <form method="post" action="{{ url_for('boundary.admin_suspend_user', user_id=u.id) }}">
+            <button class="btn btn-red">Suspend</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+  </section>
+</div>
+{% endif %}
+
+{% endblock %}

@@ -1,0 +1,22 @@
+
+<!-- BOUNDARY: Base template and shared UI -->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Volunteer Management System</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <style>body{font-family:'Canva Sans', Arial, sans-serif;}</style>
+</head>
+<body class="{{ body_class or 'bg' }}">
+  <main class="content">
+    {% with messages = get_flashed_messages() %}
+    {% if messages %}
+    <ul class="flash">{% for m in messages %}<li>{{ m }}</li>{% endfor %}</ul>
+    {% endif %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>
