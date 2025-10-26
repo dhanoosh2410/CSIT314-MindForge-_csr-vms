@@ -1,55 +1,81 @@
-{# BOUNDARY: PLATFORM MANAGER #}
 {% extends 'base.html' %}
 {% block content %}
 
 {% if view == 'dashboard' %}
-<section class="panel">
-  <h2>Platform Manager</h2>
-  <form method="get">
-    <input name="q" placeholder="Search categories" value="{{ q }}">
-    <button class="btn">Search</button>
-  </form>
-  <form method="post" action="{{ url_for('boundary.pm_create_cat') }}" class="grid2 mt">
-    <input name="name" placeholder="New category">
-    <button class="btn btn-green">Create</button>
-  </form>
-  <table class="table">
-    <tr><th>ID</th><th>Name</th><th>Actions</th></tr>
-    {% for c in categories %}
-    <tr>
-      <td>{{ c.id }}</td><td>{{ c.name }}</td>
-      <td>
-        <form method="post" action="{{ url_for('boundary.pm_update_cat', cat_id=c.id) }}" class="grid2">
-          <input name="name" value="{{ c.name }}"><button class="btn">Update</button>
-        </form>
-        <form method="post" action="{{ url_for('boundary.pm_delete_cat', cat_id=c.id) }}"><button class="btn btn-red">Delete</button></form>
-      </td>
-    </tr>
-    {% endfor %}
-  </table>
-  <a class="btn" href="{{ url_for('boundary.pm_reports') }}">Reports</a>
-</section>
+<div class="container">
+  <div class="row justify-content-center">
+    <div class="col-md-10">
+      <div class="card mb-3">
+        <div class="card-body">
+          <h3 class="card-title">Platform Manager</h3>
+          <form method="get" class="row g-2 mb-3">
+            <div class="col-md-9"><input name="q" class="form-control" placeholder="Search categories" value="{{ q }}"></div>
+            <div class="col-md-3"><button class="btn btn-outline-secondary">Search</button></div>
+          </form>
+
+          <form method="post" action="{{ url_for('boundary.pm_create_cat') }}" class="row g-2 mb-3">
+            <div class="col-md-9"><input name="name" class="form-control" placeholder="New category"></div>
+            <div class="col-md-3"><button class="btn btn-success">Create</button></div>
+          </form>
+
+          <div class="table-responsive">
+            <table class="table table-striped">
+              <thead><tr><th>ID</th><th>Name</th><th>Actions</th></tr></thead>
+              <tbody>
+              {% for c in categories %}
+                <tr>
+                  <td>{{ c.id }}</td>
+                  <td>{{ c.name }}</td>
+                  <td>
+                    <form method="post" action="{{ url_for('boundary.pm_update_cat', cat_id=c.id) }}" class="d-inline-block me-1">
+                      <input name="name" value="{{ c.name }}" class="form-control form-control-sm d-inline-block inline-input-200">
+                      <button class="btn btn-sm btn-primary">Update</button>
+                    </form>
+                    <form method="post" action="{{ url_for('boundary.pm_delete_cat', cat_id=c.id) }}" class="d-inline-block">
+                      <button class="btn btn-sm btn-danger">Delete</button>
+                    </form>
+                  </td>
+                </tr>
+              {% endfor %}
+              </tbody>
+            </table>
+          </div>
+
+          <a class="btn btn-link" href="{{ url_for('boundary.pm_reports') }}">Reports</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 {% endif %}
 
 {% if view == 'reports' %}
-<section class="panel">
-  <h2>Reports ({{ scope }})</h2>
-  <nav class="tabs">
-    <a href="{{ url_for('boundary.pm_reports', scope='daily') }}" class="tab">Daily</a>
-    <a href="{{ url_for('boundary.pm_reports', scope='weekly') }}" class="tab">Weekly</a>
-    <a href="{{ url_for('boundary.pm_reports', scope='monthly') }}" class="tab">Monthly</a>
-  </nav>
-  <div class="grid2">
-    <div>
-      <h3>Requests created</h3>
-      <ul>{% for d, c in data['requests'] %}<li>{{ d }} — {{ c }}</li>{% else %}<li>No data</li>{% endfor %}</ul>
-    </div>
-    <div>
-      <h3>Services completed</h3>
-      <ul>{% for d, c in data['completed'] %}<li>{{ d }} — {{ c }}</li>{% else %}<li>No data</li>{% endfor %}</ul>
+<div class="container">
+  <div class="row justify-content-center">
+    <div class="col-md-10">
+      <div class="card">
+        <div class="card-body">
+          <h3>Reports ({{ scope }})</h3>
+          <ul class="nav nav-tabs mb-3">
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('boundary.pm_reports', scope='daily') }}">Daily</a></li>
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('boundary.pm_reports', scope='weekly') }}">Weekly</a></li>
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('boundary.pm_reports', scope='monthly') }}">Monthly</a></li>
+          </ul>
+          <div class="row">
+            <div class="col-md-6">
+              <h5>Requests created</h5>
+              <ul>{% for d, c in data['requests'] %}<li>{{ d }} — {{ c }}</li>{% else %}<li>No data</li>{% endfor %}</ul>
+            </div>
+            <div class="col-md-6">
+              <h5>Services completed</h5>
+              <ul>{% for d, c in data['completed'] %}<li>{{ d }} — {{ c }}</li>{% else %}<li>No data</li>{% endfor %}</ul>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
-</section>
+</div>
 {% endif %}
 
 {% endblock %}

@@ -4,7 +4,7 @@ from ..entity.models import db, User, UserProfile
 
 class UserAdminController:
     @staticmethod
-    def search_users(q):
+    def search_users(q, page=1, per_page=20):
         query = User.query
         if q:
             like = f"%{q}%"
@@ -12,7 +12,25 @@ class UserAdminController:
                 (User.username.like(like)) | (User.role.like(like)) |
                 (UserProfile.full_name.like(like)) | (UserProfile.email.like(like))
             )
-        return query.order_by(User.id.desc()).all()
+        # ascending by id
+        query = query.order_by(User.id.asc())
+        try:
+            pag = query.paginate(page=page, per_page=per_page, error_out=False)
+            items = pag.items
+            total = pag.total
+            pages = pag.pages
+        except Exception:
+            # Fallback for SQLAlchemy core: use offset/limit
+            total = query.count()
+            items = query.offset((page-1)*per_page).limit(per_page).all()
+            pages = (total + per_page - 1) // per_page
+        return {
+            'items': items,
+            'total': total,
+            'page': page,
+            'per_page': per_page,
+            'pages': pages
+        }
 
     @staticmethod
     def create_user_with_profile(role, username, password, active, full_name, email, phone):

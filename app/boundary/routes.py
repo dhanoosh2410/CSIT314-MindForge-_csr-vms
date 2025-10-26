@@ -54,8 +54,12 @@ def admin_dashboard():
 def admin_users():
     AuthController.require_role('User Admin')
     q = request.args.get('q','').strip()
-    users = UserAdminController.search_users(q)
-    return render_template('user_admin.html', view='users', users=users, q=q)
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 12, type=int)
+    pag = UserAdminController.search_users(q, page=page, per_page=per_page)
+    users = pag['items']
+    return render_template('user_admin.html', view='users', users=users, q=q,
+                           page=pag['page'], per_page=pag['per_page'], total=pag['total'], pages=pag['pages'])
 
 @boundary_bp.route('/admin/users/create', methods=['POST'])
 def admin_create_user():
@@ -72,6 +76,26 @@ def admin_create_user():
     ok, msg = UserAdminController.create_user_with_profile(**data)
     flash(msg)
     return redirect(url_for('boundary.admin_users'))
+
+
+@boundary_bp.route('/admin/users/new', methods=['GET'])
+def admin_new_user():
+    AuthController.require_role('User Admin')
+    # Render the create-user form inside the main admin template (hides the users list)
+    # use a special body class so the create form can reuse the login-card centering styles
+    return render_template('user_admin.html', view='create', body_class='bg create')
+
+
+@boundary_bp.route('/admin/users/<int:user_id>/edit', methods=['GET'])
+def admin_edit_user(user_id):
+    AuthController.require_role('User Admin')
+    # render a focused edit page for a single user
+    from ..entity.models import User
+    user = User.query.get(user_id)
+    if not user:
+        flash('User not found.')
+        return redirect(url_for('boundary.admin_users'))
+    return render_template('user_admin.html', view='edit', user=user, body_class='bg create')
 
 @boundary_bp.route('/admin/users/<int:user_id>/update', methods=['POST'])
 def admin_update_user(user_id):
