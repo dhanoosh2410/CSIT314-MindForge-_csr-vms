@@ -90,3 +90,60 @@ README.md / README.txt
 - DB URI: `sqlite:///csr_vms.db` (relative to **current working directory**).
 - If you want the DB inside a specific folder, run the app from that folder, or change the URI to an absolute path.
 - The code is annotated with **BOUNDARY/CONTROL/ENTITY** comments to meet BCE requirements.
+
+
+
+GITHUB repo:
+
+Below are the codes to update the entire project folder in the repo.
+
+cd "C:\Users\dhano\OneDrive\Desktop\csit314\csr_vms_flask_bce"
+git init
+git add -A
+git commit -m "feat: Flask BCE app (login UI + modules)"
+
+git branch -M main
+git remote add origin https://github.com/dhanoosh2410/CSIT314-MindForge-_csr-vms.git
+git push -u origin main --force
+
+
+Below are the code to update the repo's files according to the changes made in the local project folder
+
+# 1) Go to your project folder
+cd "C:\Users\dhano\OneDrive\Desktop\csit314\csr_vms_flask_bce"
+
+# 2) (One-time) set your identity
+git config --global user.name "Your Name"
+git config --global user.email "you@example.com"
+
+# 3) Make sure the remote is set to your repo
+git remote -v
+# If you don't see origin, add it:
+git remote add origin https://github.com/dhanoosh2410/CSIT314-MindForge-_csr-vms.git
+
+# 4) See changes
+git status
+
+# 5) Stage & commit
+git add -A
+git commit -m "Update: login UI + merged module templates + CSS"
+
+# 6) Pull latest (rebase keeps history clean)
+git pull --rebase origin main   # use 'master' if your default branch is master
+
+# 7) Push
+git push origin main
+
+Below are code to pull the updates from github:
+
+git remote -v
+You should see something like:
+origin  https://github.com/dhanoosh2410/CSIT314-MindForge-_csr-vms.git (fetch)
+origin  https://github.com/dhanoosh2410/CSIT314-MindForge-_csr-vms.git (push)
+
+git fetch origin
+
+git checkout main
+git pull origin main
+
+git status

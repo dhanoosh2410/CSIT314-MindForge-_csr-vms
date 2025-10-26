@@ -1,248 +1,269 @@
-{% extends 'base.html' %}
-{% block content %}
+{% set uname = session.get('username','Username') %}
+{% set urole = (session.get('role','USER ADMIN') | upper) %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>User Admin</title>
+  <style>
+    :root { --blue:#004aad; --light:#c2e9ff; --red:#ff2828; --yellow:#ffa51f; --green:#00bf63; --control-h:48px; }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0;font-family:'Canva Sans',Arial,Helvetica,sans-serif;background:var(--light);color:#000}
 
-{% if view == 'dashboard' %}
-<div class="container">
-  <div class="row">
-    <div class="col-12">
-      <div class="card">
-        <div class="card-body">
-          <h3 class="card-title">User Admin</h3>
-          <p class="card-text">Manage user accounts and profiles.</p>
-          <a class="btn btn-primary" href="{{ url_for('boundary.admin_users') }}">Open Users</a>
-        </div>
+    /* Top bar */
+    .topbar{display:flex;align-items:center;justify-content:space-between;background:var(--blue);color:#fff;padding:16px 24px;border-bottom:2px solid #003d8a}
+    .brand{font-size:24px;font-weight:800}
+    .account{display:flex;gap:16px;align-items:center}
+    .who{text-align:right;line-height:1.1}
+    .who .name{display:block;font-size:24px;font-weight:800}
+    .who small{font-weight:700;opacity:.9}
+    .logout{background:var(--red);color:#fff;text-decoration:none;font-weight:800;padding:8px 18px;border-radius:10px;border:1px solid #000}
+
+    /* Layout */
+    .shell{display:flex;min-height:calc(100vh - 64px)}
+    .sidebar{width:260px;background:var(--blue);color:#fff;padding:26px 22px}
+    .sidebar h3{margin:0 0 18px 0;font-size:20px;font-weight:800}
+    .navlink{display:block;color:#fff;text-decoration:none;margin:14px 0;font-size:18px;font-weight:700}
+    .navlink.active{color:var(--yellow)} /* highlight current page text */
+    .main{flex:1;background:var(--light);padding:34px}
+    .title{font-size:32px;font-weight:800;margin:4px 0 18px 0;text-align:center}
+
+    /* Form elements */
+    label{display:block;font-weight:800;font-size:20px;margin:14px 0 6px}
+    select,input{width:100%;padding:14px;border:1px solid #000;border-radius:10px;background:#fff;font-size:18px}
+    .row{max-width:780px;margin:0 auto}
+
+    .btn{display:inline-block;border:1.5px solid #000;border-radius:10px;font-weight:800;padding:14px 28px;cursor:pointer;text-align:center;text-decoration:none}
+    .btn-yellow{background:var(--yellow);color:#fff}
+    .btn-orange{background:var(--yellow);color:#000;border:1px solid #000;border-radius:14px;font-weight:800;padding:10px 22px}
+    .btn-red{background:var(--red);color:#fff}
+    .btn-green{background:var(--green);color:#fff}
+
+    /* Full-width action helper */
+    .actions-col{max-width:780px;margin:18px auto 0;display:flex;flex-direction:column;gap:14px}
+    .btn-block{width:100%;height:56px;font-size:18px;border-radius:10px}
+
+    /* Filters row */
+    .filters{display:flex;gap:16px;align-items:center;justify-content:flex-start;margin:10px auto 14px;max-width:880px}
+    .filters .search{flex:1}
+
+    /* Blue select pill with chevron; make all controls same height */
+    .select-wrap{position:relative;display:inline-block;}
+    .select-blue{
+      appearance:none;-webkit-appearance:none;-moz-appearance:none;
+      background:#0f4fb4;color:#fff;font-weight:800;height:var(--control-h);
+      padding:0 46px 0 16px;border:1px solid #000;border-radius:18px;font-size:18px;min-width:220px;
+      box-shadow:inset 0 0 0 2px rgba(255,255,255,.12)
+    }
+    .select-wrap::after{content:"";position:absolute;right:14px;top:50%;transform:translateY(-50%) rotate(45deg);width:10px;height:10px;border-right:3px solid #fff;border-bottom:3px solid #fff;pointer-events:none}
+    .filters .search input{height:var(--control-h);border:1px solid #000;border-radius:14px;padding:0 16px;font-size:18px}
+    .filters .btn-orange{height:var(--control-h);display:inline-flex;align-items:center;justify-content:center;min-width:140px}
+
+    /* Table with column lines */
+    .tablewrap{max-width:880px;margin:0 auto;background:#fff;border:1px solid #000;border-radius:12px;overflow:hidden}
+    table{width:100%;border-collapse:separate;border-spacing:0;font-size:16px}
+    thead{background:#0a4aa9;color:#fff}
+    th,td{padding:14px 16px;font-size:16px;border-bottom:1px solid #d5e6f7;border-right:1px solid #d5e6f7}
+    th:last-child,td:last-child{border-right:none}
+    th:first-child,td:first-child{width:64px}
+    .actions{text-align:right}
+
+    /* Edit button in table */
+    .edit-btn{display:inline-block;background:#ffa51f;color:#000;text-decoration:none;padding:10px 22px;border:1px solid #000;border-radius:12px;font-weight:400;box-shadow:0 2px 0 rgba(0,0,0,.25)}
+    .edit-btn:hover,.edit-btn:focus{filter:brightness(.96);text-decoration:none}
+
+    .status-active{color:var(--green);font-weight:800}
+    .status-suspended{color:var(--red);font-weight:800}
+
+    /* === Update User page button styles (ONLY inside .update-buttons) === */
+    .update-buttons .btn-block{width:100%;height:60px;font-size:20px;font-weight:800;border-radius:10px;border:1px solid #000}
+    .update-buttons .btn-yellow{background:#ffa51f;color:#fff}
+    .update-buttons .btn-blue{background:#0f4fb4;color:#fff}
+    .update-buttons .btn-red{background:#ff2828;color:#fff}
+    .update-buttons .btn-green{background:#00bf63;color:#fff}
+    .update-buttons .actions-col{margin-top:18px;display:flex;flex-direction:column;gap:16px;max-width:780px;margin-left:auto;margin-right:auto}
+
+    /* Pager */
+    .pager{display:flex;gap:8px;align-items:center;justify-content:center;margin:16px 0}
+    .pagebtn{border:1.5px solid #000;border-radius:8px;background:#fff;padding:8px 12px;text-decoration:none;color:#000}
+    .pagebtn.active{background:#1e66e8;color:#fff;border-color:#000}
+  </style>
+</head>
+<body>
+
+  <!-- TOP BAR -->
+  <div class="topbar">
+    <div class="brand">VOLUNTEER MANAGEMENT SYSTEM</div>
+    <div class="account">
+      <div class="who">
+        <span class="name">{{ uname }}</span>
+        <small>{{ urole }}</small>
       </div>
+      <a href="{{ url_for('boundary.logout') }}" class="logout">LOGOUT</a>
     </div>
   </div>
-</div>
-{% endif %}
 
-{% if view == 'users' %}
-<div class="container">
-  <div class="row">
-    <div class="col-12">
-      <div class="card mb-3">
-        <div class="card-body">
-          <h3>Users & Profiles</h3>
-          <form method="get" class="row g-2 mb-3">
-            <div class="col"><input name="q" class="form-control" placeholder="Search users/profiles" value="{{ q }}"></div>
-            <div class="col-auto"><button class="btn btn-outline-secondary">Search</button></div>
+  <div class="shell">
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+      <h3>User Management</h3>
+      <a class="navlink {% if view == 'create' %}active{% endif %}" href="{{ url_for('boundary.admin_new_user') }}">Create User</a>
+      <a class="navlink {% if view == 'users' or view == 'edit' %}active{% endif %}" href="{{ url_for('boundary.admin_users', type='accounts') }}">Update User</a>
+    </aside>
+
+    <!-- MAIN -->
+    <main class="main">
+      {% if view == 'create' %}
+        <h1 class="title">CREATE USER</h1>
+        <div class="row">
+          <form method="post" action="{{ url_for('boundary.admin_create_user') }}">
+            <label>User</label>
+            <select name="user_type">
+              <option value="" disabled selected>Select user type</option>
+              <option value="account">User Account</option>
+              <option value="profile">User Profile</option>
+            </select>
+
+            <label>Role</label>
+            <select name="role" required>
+              <option value="" disabled selected>Select Role</option>
+              <option value="User Admin">User Admin</option>
+              <option value="CSR Representative">CSR Representative</option>
+              <option value="Person in Need">Person in Need</option>
+              <option value="Platform Manager">Platform Manager</option>
+            </select>
+
+            <label>Full Name</label>
+            <input type="text" name="full_name" placeholder="Enter your full name"/>
+
+            <label>Contact Number</label>
+            <input type="text" name="phone" placeholder="+65"/>
+
+            <label>Username</label>
+            <input type="text" name="username" placeholder="Enter your username" required/>
+
+            <label>Password</label>
+            <input type="password" name="password" placeholder="Enter your password" required/>
+
+            <div class="actions-col">
+              <button class="btn btn-yellow btn-block" type="submit">Create Account</button>
+            </div>
+          </form>
+        </div>
+
+      {% elif view == 'users' %}
+        <h1 class="title">VIEW/UPDATE/SUSPEND/SEARCH USER</h1>
+
+        <!-- Filters -->
+        <form class="filters" method="get" action="{{ url_for('boundary.admin_users') }}">
+          <div class="select-wrap">
+            <select class="select-blue" name="type" onchange="this.form.submit()">
+              <option value="accounts" {{ 'selected' if type=='accounts' else '' }}>User Accounts</option>
+              <option value="profiles" {{ 'selected' if type!='accounts' else '' }}>User Profiles</option>
+            </select>
+          </div>
+          <div class="search">
+            <input type="text" name="q" value="{{ q }}" placeholder="Search user account or profile"/>
+          </div>
+          <button class="btn-orange" type="submit">Search</button>
+        </form>
+
+        <!-- Table -->
+        <div class="tablewrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th><th>Username</th><th>Role</th><th>Status</th><th class="actions">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for u in users %}
+              <tr>
+                <td>{{ u.id }}</td>
+                <td>{{ u.username }}</td>
+                <td>{{ u.role }}</td>
+                <td>{% if u.is_active %}<span class="status-active">Active</span>{% else %}<span class="status-suspended">Suspended</span>{% endif %}</td>
+                <td class="actions"><a class="edit-btn" href="{{ url_for('boundary.admin_edit_user', user_id=u.id) }}">Edit</a></td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+        {% if pages and pages > 1 %}
+        <div class="pager">
+          <a class="pagebtn {{ 'disabled' if page<=1 else '' }}" href="{{ url_for('boundary.admin_users', q=q, type=type, page=page-1) }}">Previous</a>
+          {% for p in range(1, pages+1) %}
+            <a class="pagebtn {{ 'active' if p==page else '' }}" href="{{ url_for('boundary.admin_users', q=q, type=type, page=p) }}">{{ p }}</a>
+          {% endfor %}
+          <a class="pagebtn {{ 'disabled' if page>=pages else '' }}" href="{{ url_for('boundary.admin_users', q=q, type=type, page=page+1) }}">Next</a>
+        </div>
+        {% endif %}
+
+      {% elif view == 'edit' %}
+        <h1 class="title">UPDATE USER</h1>
+        <div class="row">
+          <!-- Update form -->
+          <form method="post" action="{{ url_for('boundary.admin_update_user', user_id=user.id) }}">
+            <label>Role</label>
+            <select name="role" required>
+              <option value="User Admin" {{ 'selected' if user.role=='User Admin' else '' }}>User Admin</option>
+              <option value="CSR Representative" {{ 'selected' if user.role=='CSR Representative' else '' }}>CSR Representative</option>
+              <option value="Person in Need" {{ 'selected' if user.role=='Person in Need' else '' }}>Person in Need</option>
+              <option value="Platform Manager" {{ 'selected' if user.role=='Platform Manager' else '' }}>Platform Manager</option>
+            </select>
+
+            <label>Full Name</label>
+            <input type="text" name="full_name" value="{{ user.profile.full_name if user.profile else '' }}" placeholder="Enter your full name"/>
+
+            <label>Contact Number</label>
+            <input type="text" name="phone" value="{{ user.profile.phone if user.profile else '' }}" placeholder="+65"/>
+
+            <label>Username</label>
+            <input type="text" name="username" value="{{ user.username }}" placeholder="Enter your username" required/>
+
+            <label>Password</label>
+            <input type="password" name="password" placeholder="Enter your password (leave blank to keep current)"/>
+
+            <!-- Submit button (inside form) -->
+            <div class="update-buttons">
+              <div class="actions-col">
+                <button class="btn btn-yellow btn-block" type="submit">Submit</button>
+              </div>
+            </div>
           </form>
 
-          <div class="mb-3">
-            <a class="btn btn-success" href="{{ url_for('boundary.admin_new_user') }}">Create User</a>
+          <!-- Suspend/Activate + Back (separate from the form) -->
+          <div class="update-buttons">
+            <div class="actions-col" style="margin-top:14px">
+              {% if user.is_active %}
+                <form method="post" action="{{ url_for('boundary.admin_suspend_user', user_id=user.id) }}">
+                  <button class="btn btn-red btn-block" type="submit">Suspend User</button>
+                </form>
+              {% else %}
+                <form method="post" action="{{ url_for('boundary.admin_activate_user', user_id=user.id) }}">
+                  <button class="btn btn-green btn-block" type="submit">Activate User</button>
+                </form>
+              {% endif %}
+            </div>
+
+            <div class="actions-col" style="margin-top:14px">
+              <a class="btn btn-blue btn-block" href="{{ url_for('boundary.admin_users', type='accounts') }}">Back</a>
+            </div>
           </div>
-
-          <h5>Accounts</h5>
-          <div class="table-responsive">
-            <table class="table table-striped user-admin-table align-middle">
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Username</th>
-                  <th>Role</th>
-                  <th>Active</th>
-                  <th class="text-end">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for u in users %}
-                <tr>
-                  <td class="ug-60">{{ u.id }}</td>
-                  <td>{{ u.username }}</td>
-                  <td>{{ u.role }}</td>
-                  <td>{{ 'Yes' if u.is_active else 'No' }}</td>
-                  <td class="user-actions text-end">
-                    <form method="get" action="{{ url_for('boundary.admin_edit_user', user_id=u.id) }}" class="d-inline-block me-1">
-                      <button class="btn btn-sm btn-outline-secondary" type="submit">View</button>
-                    </form>
-                    <form method="get" action="{{ url_for('boundary.admin_edit_user', user_id=u.id) }}" class="d-inline-block me-1">
-                      <button class="btn btn-sm btn-outline-primary" type="submit">Edit</button>
-                    </form>
-                    <form method="post" action="{{ url_for('boundary.admin_suspend_user', user_id=u.id) }}" class="d-inline-block">
-                      <button class="btn btn-sm btn-danger" type="submit">Suspend</button>
-                    </form>
-                  </td>
-                </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-
-          {# Pagination controls #}
-          {% if pages and pages > 1 %}
-          <nav aria-label="User list pagination">
-            <ul class="pagination mt-3">
-              <li class="page-item{% if page <= 1 %} disabled{% endif %}"><a class="page-link" href="{{ url_for('boundary.admin_users', q=q, page=page-1) }}">Previous</a></li>
-              {% for p in range(1, pages+1) %}
-                <li class="page-item{% if p == page %} active{% endif %}"><a class="page-link" href="{{ url_for('boundary.admin_users', q=q, page=p) }}">{{ p }}</a></li>
-              {% endfor %}
-              <li class="page-item{% if page >= pages %} disabled{% endif %}"><a class="page-link" href="{{ url_for('boundary.admin_users', q=q, page=page+1) }}">Next</a></li>
-            </ul>
-          </nav>
-          {% endif %}
-
         </div>
-      </div>
-    </div>
+      {% endif %}
+
+      <!-- Flash pop-up -->
+      {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        <div id="flash" style="display:none">{{ messages|join(' • ') }}</div>
+        <script>const f=document.getElementById('flash');if(f&&f.textContent.trim())alert(f.textContent.trim());</script>
+      {% endif %}
+      {% endwith %}
+    </main>
   </div>
-</div>
-{% elif view == 'create' %}
-<div class="login-page">
-  <div class="login-container">
-    <h2 class="login-title">Create User</h2>
-    <div class="login-card">
-      <form method="post" action="{{ url_for('boundary.admin_create_user') }}" class="login-form needs-validation" novalidate>
-        <label class="login-label">ROLE</label>
-        <div class="login-input-wrap">
-          <select id="roleSelect" name="role" class="login-input" required>
-            <option value="User Admin">User Admin</option>
-            <option value="CSR Representative">CSR Representative</option>
-            <option value="Person in Need">Person in Need</option>
-            <option value="Platform Manager">Platform Manager</option>
-          </select>
-        </div>
-
-        <label class="login-label">USERNAME</label>
-        <div class="login-input-wrap">
-          <input id="usernameInput" name="username" class="login-input" placeholder="username" required>
-        </div>
-
-        <label class="login-label">PASSWORD</label>
-        <div class="login-input-wrap">
-          <input id="passwordInput" name="password" type="password" class="login-input" placeholder="password" required>
-        </div>
-
-        <label class="login-label">FULL NAME</label>
-        <div class="login-input-wrap">
-          <input id="fullName" name="full_name" class="login-input" placeholder="full name">
-        </div>
-
-        <label class="login-label">EMAIL</label>
-        <div class="login-input-wrap">
-          <input id="emailInput2" name="email" type="email" class="login-input" placeholder="email">
-        </div>
-
-        <label class="login-label">PHONE</label>
-        <div class="login-input-wrap">
-          <input id="phoneInput" name="phone" class="login-input" placeholder="phone">
-        </div>
-
-        <div class="login-actions">
-          <button class="login-btn" type="submit">Create</button>
-          <a class="login-btn login-back" href="{{ url_for('boundary.admin_users') }}">Back</a>
-        </div>
-
-        {% with messages = get_flashed_messages() %}
-        {% if messages %}
-          <div class="mt-3">
-            {% for m in messages %}
-              <div class="alert alert-info" role="alert">{{ m }}</div>
-            {% endfor %}
-          </div>
-        {% endif %}
-        {% endwith %}
-
-      </form>
-    </div>
-  </div>
-</div>
-<script>
-  // Simple Bootstrap validation for the inlined create form
-  (function () {
-    'use strict'
-    var forms = document.querySelectorAll('.needs-validation')
-    Array.prototype.slice.call(forms).forEach(function (form) {
-      form.addEventListener('submit', function (event) {
-        if (!form.checkValidity()) {
-          event.preventDefault(); event.stopPropagation();
-        }
-        form.classList.add('was-validated');
-      }, false)
-    })
-  })();
-</script>
-{% endif %}
-
-{% if view == 'edit' %}
-<div class="login-page">
-  <div class="login-container">
-    <h2 class="login-title">Edit User</h2>
-    <div class="login-card">
-      <form method="post" action="{{ url_for('boundary.admin_update_user', user_id=user.id) }}" class="login-form needs-validation" novalidate>
-        <label class="login-label">ROLE</label>
-        <div class="login-input-wrap">
-          <select id="roleSelect" name="role" class="login-input" required>
-            <option value="User Admin" {% if user.role=='User Admin' %}selected{% endif %}>User Admin</option>
-            <option value="CSR Representative" {% if user.role=='CSR Representative' %}selected{% endif %}>CSR Representative</option>
-            <option value="Person in Need" {% if user.role=='Person in Need' %}selected{% endif %}>Person in Need</option>
-            <option value="Platform Manager" {% if user.role=='Platform Manager' %}selected{% endif %}>Platform Manager</option>
-          </select>
-        </div>
-
-        <label class="login-label">USERNAME</label>
-        <div class="login-input-wrap">
-          <input id="usernameInput" name="username" class="login-input" value="{{ user.username }}" required>
-        </div>
-
-        <label class="login-label">PASSWORD</label>
-        <div class="login-input-wrap">
-          <input id="passwordInput" name="password" type="password" class="login-input" placeholder="(leave blank to keep current)">
-        </div>
-
-        <label class="login-label">FULL NAME</label>
-        <div class="login-input-wrap">
-          <input id="fullName" name="full_name" class="login-input" value="{{ user.profile.full_name if user.profile else '' }}">
-        </div>
-
-        <label class="login-label">EMAIL</label>
-        <div class="login-input-wrap">
-          <input id="emailInput2" name="email" type="email" class="login-input" value="{{ user.profile.email if user.profile else '' }}">
-        </div>
-
-        <label class="login-label">PHONE</label>
-        <div class="login-input-wrap">
-          <input id="phoneInput" name="phone" class="login-input" value="{{ user.profile.phone if user.profile else '' }}">
-        </div>
-
-        <div class="form-check mt-2">
-          <input class="form-check-input" type="checkbox" name="active" id="activeCheck" {% if user.is_active %}checked{% endif %}>
-          <label class="form-check-label" for="activeCheck">active</label>
-        </div>
-
-        <div class="login-actions">
-          <button class="login-btn" type="submit">Update</button>
-          <a class="login-btn login-back" href="{{ url_for('boundary.admin_users') }}">Back</a>
-        </div>
-
-        {% with messages = get_flashed_messages() %}
-        {% if messages %}
-          <div class="mt-3">
-            {% for m in messages %}
-              <div class="alert alert-info" role="alert">{{ m }}</div>
-            {% endfor %}
-          </div>
-        {% endif %}
-        {% endwith %}
-
-      </form>
-    </div>
-  </div>
-</div>
-<script>
-  (function () {
-    'use strict'
-    var forms = document.querySelectorAll('.needs-validation')
-    Array.prototype.slice.call(forms).forEach(function (form) {
-      form.addEventListener('submit', function (event) {
-        if (!form.checkValidity()) {
-          event.preventDefault(); event.stopPropagation();
-        }
-        form.classList.add('was-validated');
-      }, false)
-    })
-  })();
-</script>
-{% endif %}
-
-{% endblock %}
+</body>
+</html>
