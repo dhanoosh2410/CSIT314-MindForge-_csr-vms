@@ -6,6 +6,14 @@ import hashlib, random
 
 db = SQLAlchemy()
 
+# The four fixed “User Accounts" used by admin listing logic
+FIXED_ACCOUNTS = {
+    ('User Admin', 'user_admin1'),
+    ('CSR Representative', 'csr_user1'),
+    ('Person in Need', 'pin_user1'),
+    ('Platform Manager', 'pm_user1'),
+}
+
 class User(db.Model):  # ENTITY
     id = db.Column(db.Integer, primary_key=True)
     role = db.Column(db.String(50), nullable=False)
@@ -20,6 +28,98 @@ class User(db.Model):  # ENTITY
     def check_password(self, raw):
         return self.password_hash == hashlib.sha256(raw.encode()).hexdigest()
 
+    @classmethod
+    def login(cls, role, username, password):
+        """Authenticate a user by role, username and password.
+
+        Returns the User instance if credentials are valid and the user is active,
+        otherwise returns None.
+        """
+        user = cls.query.filter_by(username=username, role=role).first()
+        if user and user.is_active and user.check_password(password):
+            return user
+        return None
+    @classmethod
+    def create_with_profile(cls, role, username, password, active, full_name, email, phone):
+        if cls.query.filter_by(username=username).first():
+            return False, "Username exists."
+        u = cls(role=role, username=username, is_active=active)
+        u.set_password(password)
+        db.session.add(u)
+        db.session.flush()
+        p = UserProfile(user_id=u.id, full_name=full_name, email=email, phone=phone)
+        db.session.add(p)
+        db.session.commit()
+        return True, "User created."
+
+    @classmethod
+    def update_with_profile(cls, user_id, role, username, password, active, full_name, email, phone):
+        u = cls.query.get(user_id)
+        if not u:
+            return False, "User not found."
+        u.role = role
+        u.username = username
+        u.is_active = active
+        if password:
+            u.set_password(password)
+        if not u.profile:
+            u.profile = UserProfile(user_id=u.id)
+        u.profile.full_name = full_name
+        u.profile.email = email
+        u.profile.phone = phone
+        db.session.commit()
+        return True, "User updated."
+
+    @classmethod
+    def suspend_user(cls, user_id):
+        u = cls.query.get(user_id)
+        if u:
+            u.is_active = False
+            db.session.commit()
+
+    @classmethod
+    def activate_user(cls, user_id):
+        u = cls.query.get(user_id)
+        if u:
+            u.is_active = True
+            db.session.commit()
+
+    @classmethod
+    def search_users(cls, q: str = "", user_type: str = "accounts", page: int = 1, per_page: int = 20):
+        # user_type: 'accounts' (only the four fixed accounts) or 'profiles' (everything else)
+        query = cls.query
+        # filter by type
+        if user_type == 'accounts':
+            ors = [ (cls.role == r) & (cls.username == u) for (r, u) in FIXED_ACCOUNTS ]
+            f = ors[0]
+            for cond in ors[1:]:
+                f = f | cond
+            query = query.filter(f)
+        else:
+            # profiles = NOT the four fixed accounts
+            for (r, u) in FIXED_ACCOUNTS:
+                query = query.filter(~((cls.role == r) & (cls.username == u)))
+
+        # optional free-text search
+        if q:
+            like = f"%{q}%"
+            query = query.join(UserProfile, isouter=True).filter(
+                (cls.username.like(like)) |
+                (cls.role.like(like)) |
+                (UserProfile.full_name.like(like)) |
+                (UserProfile.email.like(like))
+            )
+
+        query = query.order_by(cls.id.asc())
+        pag = query.paginate(page=page, per_page=per_page, error_out=False)
+        return {
+            "items": pag.items,
+            "total": pag.total,
+            "page": pag.page,
+            "per_page": per_page,
+            "pages": pag.pages,
+        }
+
 class UserProfile(db.Model):  # ENTITY
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
@@ -30,6 +130,17 @@ class UserProfile(db.Model):  # ENTITY
 class Category(db.Model):  # ENTITY
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(80), unique=True, nullable=False)
+
+    @classmethod
+    def get_all(cls):
+        return cls.query.order_by(cls.name).all()
+
+    @classmethod
+    def search(cls, q):
+        query = cls.query
+        if q:
+            query = query.filter(cls.name.like(f"%{q}%"))
+        return query.order_by(cls.name).all()
 
 class Request(db.Model):  # ENTITY
     id = db.Column(db.Integer, primary_key=True)
@@ -46,6 +157,52 @@ class Request(db.Model):  # ENTITY
     category = db.relationship('Category')
     pin = db.relationship('User', foreign_keys=[pin_id])
 
+    @classmethod
+    def list_open(cls, category_id=None):
+        query = cls.query.filter_by(status='open')
+        if category_id:
+            query = query.filter_by(category_id=category_id)
+        items = query.order_by(cls.created_at.desc()).all()
+        # increment views_count for these items (approximate listing views)
+        for r in items:
+            r.views_count = (r.views_count or 0) + 1
+        db.session.commit()
+        return items
+
+    @classmethod
+    def create_for_pin(cls, pin_id, title, description, category_id):
+        r = cls(pin_id=pin_id, title=title, description=description, category_id=category_id, status='open')
+        db.session.add(r)
+        db.session.commit()
+        return r
+
+    @classmethod
+    def update_by_id(cls, req_id, title, description, category_id, status):
+        r = cls.query.get(req_id)
+        if not r:
+            return False
+        r.title = title
+        r.description = description
+        r.category_id = category_id
+        r.status = status
+        db.session.commit()
+        return True
+
+    @classmethod
+    def delete_by_id(cls, req_id):
+        r = cls.query.get(req_id)
+        if r:
+            db.session.delete(r)
+            db.session.commit()
+
+    @classmethod
+    def search_by_pin(cls, pin_id, q=None):
+        query = cls.query.filter_by(pin_id=pin_id)
+        if q:
+            like = f"%{q}%"
+            query = query.filter((cls.title.like(like)) | (cls.description.like(like)))
+        return query.order_by(cls.created_at.desc()).all()
+
 class Shortlist(db.Model):  # ENTITY
     id = db.Column(db.Integer, primary_key=True)
     csr_id = db.Column(db.Integer, db.ForeignKey('user.id'))
@@ -53,6 +210,21 @@ class Shortlist(db.Model):  # ENTITY
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     csr = db.relationship('User', foreign_keys=[csr_id])
     request = db.relationship('Request')
+
+    @classmethod
+    def add_if_not_exists(cls, csr_id, request_id):
+        exists = cls.query.filter_by(csr_id=csr_id, request_id=request_id).first()
+        if not exists:
+            db.session.add(cls(csr_id=csr_id, request_id=request_id))
+            # bump shortlist count on request
+            r = Request.query.get(request_id)
+            if r:
+                r.shortlist_count = (r.shortlist_count or 0) + 1
+            db.session.commit()
+
+    @classmethod
+    def for_csr(cls, csr_id):
+        return cls.query.filter_by(csr_id=csr_id).order_by(cls.created_at.desc()).all()
 
 class ServiceHistory(db.Model):  # ENTITY
     id = db.Column(db.Integer, primary_key=True)
@@ -65,6 +237,17 @@ class ServiceHistory(db.Model):  # ENTITY
     pin = db.relationship('User', foreign_keys=[pin_id])
     request = db.relationship('Request')
     category = db.relationship('Category')
+
+    @classmethod
+    def filter_history(cls, category_id=None, start=None, end=None):
+        q = cls.query
+        if category_id:
+            q = q.filter_by(category_id=category_id)
+        if start:
+            q = q.filter(cls.date_completed >= start)
+        if end:
+            q = q.filter(cls.date_completed <= end)
+        return q.order_by(cls.date_completed.desc()).all()
 
 def seed_database():
     # Seed categories if empty

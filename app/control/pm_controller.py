@@ -5,10 +5,7 @@ from ..entity.models import db, Category
 class PMController:
     @staticmethod
     def search_categories(q):
-        query = Category.query
-        if q:
-            query = query.filter(Category.name.like(f"%{q}%"))
-        return query.order_by(Category.name).all()
+        return Category.search(q)
 
     @staticmethod
     def create_category(name):
@@ -17,9 +14,13 @@ class PMController:
     @staticmethod
     def update_category(cat_id, name):
         c = Category.query.get(cat_id)
-        if c: c.name = name; db.session.commit()
+        if c:
+            c.name = name
+            db.session.commit()
 
     @staticmethod
     def delete_category(cat_id):
         c = Category.query.get(cat_id)
-        if c: db.session.delete(c); db.session.commit()
+        if c:
+            db.session.delete(c)
+            db.session.commit()
