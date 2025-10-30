@@ -1,19 +1,58 @@
 {% extends 'base.html' %}
 {% block content %}
+<style>
+  /* PIN dashboard table tweaks to avoid squashed columns */
+  .pin-table th, .pin-table td { white-space: nowrap; vertical-align: middle; }
+  .pin-table th.title, .pin-table td.title { min-width: 220px; }
+  .pin-table th.category, .pin-table td.category { min-width: 140px; }
+  .pin-table th.status, .pin-table td.status { min-width: 80px; }
+  .pin-table th.views, .pin-table td.views { min-width: 80px; text-align: center; }
+  .pin-table th.shortlists, .pin-table td.shortlists { min-width: 80px; text-align: center; }
+  .pin-table th.actions, .pin-table td.actions { min-width: 160px; }
+  @media (max-width: 768px) {
+    .pin-table th, .pin-table td { white-space: normal; }
+  }
+</style>
 
-{% if view == 'dashboard' %}
+{% if view == 'create' %}
+<div class="container">
+  <div class="row justify-content-center">
+    <div class="col-md-8 offset-md-2">
+      <div class="card mb-3">
+        <div class="card-body">
+          <h3 class="card-title">Create Request</h3>
+          <form method="post" action="{{ url_for('boundary.pin_create_req') }}">
+            <div class="mb-3">
+              <label class="form-label">Title</label>
+              <input name="title" class="form-control" placeholder="Request title" required />
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Description</label>
+              <textarea name="description" class="form-control" placeholder="Describe your need"></textarea>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Category</label>
+              <select name="category_id" class="form-select">{% for c in categories %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select>
+            </div>
+            <div class="d-flex gap-2">
+              <button class="btn btn-success">Create</button>
+              <a class="btn btn-secondary" href="{{ url_for('boundary.pin_dashboard') }}">Cancel</a>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% elif view == 'dashboard' %}
 <div class="container">
   <div class="row">
     <div class="col-md-8 offset-md-2">
       <div class="card mb-3">
         <div class="card-body">
           <h3 class="card-title">Person-In-Need</h3>
-          <form method="post" action="{{ url_for('boundary.pin_create_req') }}" class="row g-2">
-            <div class="col-md-12"><input name="title" class="form-control" placeholder="Request title"></div>
-            <div class="col-md-12"><textarea name="description" class="form-control" placeholder="Describe your need"></textarea></div>
-            <div class="col-md-8"><select name="category_id" class="form-select">{% for c in categories %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select></div>
-            <div class="col-md-4 text-end"><button class="btn btn-success">Create</button></div>
-          </form>
+          <p>Create a new request using the button below.</p>
+          <a class="btn btn-success" href="{{ url_for('boundary.pin_new_req') }}">Create Request</a>
         </div>
       </div>
 
@@ -25,9 +64,19 @@
           </form>
 
           <h5>My Requests</h5>
+          {% if reqs and reqs|length > 0 %}
           <div class="table-responsive">
-            <table class="table table-striped">
-              <thead><tr><th>Title</th><th>Category</th><th>Status</th><th>Views</th><th>Shortlists</th><th>Actions</th></tr></thead>
+            <table class="table table-striped pin-table">
+              <thead>
+                <tr>
+                  <th>Title</th>
+                  <th>Category</th>
+                  <th>Status</th>
+                  <th class="views">Views</th>
+                  <th>Shortlists</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
               <tbody>
               {% for r in reqs %}
               <tr>
@@ -37,9 +86,7 @@
                 <td>{{ r.views_count }}</td>
                 <td>{{ r.shortlist_count }}</td>
                 <td>
-                  <form method="post" action="{{ url_for('boundary.pin_update_req', req_id=r.id) }}" class="d-inline-block me-1">
-                    <button class="btn btn-sm btn-primary">Edit</button>
-                  </form>
+                  <a class="btn btn-sm btn-primary d-inline-block me-1" href="{{ url_for('boundary.pin_edit_req', req_id=r.id) }}">Edit</a>
                   <form method="post" action="{{ url_for('boundary.pin_delete_req', req_id=r.id) }}" class="d-inline-block">
                     <button class="btn btn-sm btn-danger">Delete</button>
                   </form>
@@ -49,7 +96,53 @@
               </tbody>
             </table>
           </div>
+          {% else %}
+            <div class="alert alert-info">You have no requests. Use the form above to create your first request.</div>
+          {% endif %}
           <a class="btn btn-link" href="{{ url_for('boundary.pin_history') }}">View Completed Matches</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% if view == 'edit' %}
+<div class="container">
+  <div class="row justify-content-center">
+    <div class="col-md-8">
+      <div class="card mb-3">
+        <div class="card-body">
+          <h3 class="card-title">Edit Request</h3>
+          <form method="post" action="{{ url_for('boundary.pin_update_req', req_id=req.id) }}">
+            <div class="mb-3">
+              <label class="form-label">Title</label>
+              <input name="title" class="form-control" value="{{ req.title }}" required />
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Description</label>
+              <textarea name="description" class="form-control">{{ req.description }}</textarea>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Category</label>
+              <select name="category_id" class="form-select">
+                {% for c in categories %}
+                  <option value="{{ c.id }}" {% if c.id == req.category_id %}selected{% endif %}>{{ c.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Status</label>
+              <select name="status" class="form-select">
+                <option value="open" {% if req.status == 'open' %}selected{% endif %}>Open</option>
+                <option value="completed" {% if req.status == 'completed' %}selected{% endif %}>Completed</option>
+              </select>
+            </div>
+            <div class="d-flex gap-2">
+              <button class="btn btn-primary">Save</button>
+              <a class="btn btn-secondary" href="{{ url_for('boundary.pin_dashboard') }}">Cancel</a>
+            </div>
+          </form>
         </div>
       </div>
     </div>
@@ -71,9 +164,27 @@
             <div class="col-md-3 d-flex align-items-end"><button class="btn btn-secondary">Filter</button></div>
           </form>
           <div class="table-responsive">
-            <table class="table table-striped">
-              <thead><tr><th>Date</th><th>Request</th><th>Category</th></tr></thead>
-              <tbody>{% for h in items %}<tr><td>{{ h.date_completed.date() }}</td><td>{{ h.request.title if h.request else '-' }}</td><td>{{ h.category.name if h.category else '-' }}</td></tr>{% endfor %}</tbody>
+            <table class="table table-striped pin-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Request</th>
+                  <th>Category</th>
+                  <th>Volunteer</th>
+                  <th>Contact</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for h in items %}
+                  <tr>
+                    <td>{{ h.date_completed.date() }}</td>
+                    <td>{{ h.request.title if h.request else '-' }}</td>
+                    <td>{{ h.category.name if h.category else '-' }}</td>
+                    <td>{{ h.csr.profile.full_name if h.csr and h.csr.profile else (h.csr.username if h.csr else '-') }}</td>
+                    <td>{{ h.csr.profile.email if h.csr and h.csr.profile else (h.csr.username if h.csr else '-') }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
             </table>
           </div>
         </div>

@@ -30,11 +30,8 @@ class User(db.Model):  # ENTITY
 
     @classmethod
     def login(cls, role, username, password):
-        """Authenticate a user by role, username and password.
-
-        Returns the User instance if credentials are valid and the user is active,
-        otherwise returns None.
-        """
+        # authenticate a user by role, username and password.
+        # returns the User instance if credentials are valid and the user is active, otherwise returns None
         user = cls.query.filter_by(username=username, role=role).first()
         if user and user.is_active and user.check_password(password):
             return user
@@ -59,7 +56,12 @@ class User(db.Model):  # ENTITY
             return False, "User not found."
         u.role = role
         u.username = username
-        u.is_active = active
+        # prevents suspension on updating a user
+        if active is not None:
+            if isinstance(active, str):
+                u.is_active = active.lower() in ('on', 'true', '1')
+            else:
+                u.is_active = bool(active)
         if password:
             u.set_password(password)
         if not u.profile:
@@ -142,6 +144,13 @@ class Category(db.Model):  # ENTITY
             query = query.filter(cls.name.like(f"%{q}%"))
         return query.order_by(cls.name).all()
 
+    @classmethod
+    def get_by_id(cls, cat_id):
+    	# return the Category instance or None for the given id
+        if cat_id is None:
+            return None
+        return cls.query.get(cat_id)
+
 class Request(db.Model):  # ENTITY
     id = db.Column(db.Integer, primary_key=True)
     pin_id = db.Column(db.Integer, db.ForeignKey('user.id'))   # PIN owner
@@ -168,6 +177,36 @@ class Request(db.Model):  # ENTITY
             r.views_count = (r.views_count or 0) + 1
         db.session.commit()
         return items
+
+    @classmethod
+    def paginate_open(cls, category_id=None, page=1, per_page=12):
+        # return a paginated dict of open requests and increment views for the page's items
+        # { items, total, page, per_page, pages }
+        query = cls.query.filter_by(status='open')
+        if category_id:
+            query = query.filter_by(category_id=category_id)
+        query = query.order_by(cls.created_at.desc())
+        pag = query.paginate(page=page, per_page=per_page, error_out=False)
+        items = pag.items
+        # increase views for only the returned items
+        for r in items:
+            r.views_count = (r.views_count or 0) + 1
+        db.session.commit()
+        return {
+            'items': items,
+            'total': pag.total,
+            'page': pag.page,
+            'per_page': pag.per_page,
+            'pages': pag.pages,
+        }
+
+    @classmethod
+    def get_if_open(cls, req_id):
+        # return the Request when it exists and is open, otherwise None
+        r = cls.query.get(req_id)
+        if not r or r.status != 'open':
+            return None
+        return r
 
     @classmethod
     def create_for_pin(cls, pin_id, title, description, category_id):
@@ -203,6 +242,14 @@ class Request(db.Model):  # ENTITY
             query = query.filter((cls.title.like(like)) | (cls.description.like(like)))
         return query.order_by(cls.created_at.desc()).all()
 
+    @classmethod
+    def get_for_pin(cls, req_id, pin_id):
+        # return the request if it exists and belongs to pin_id, otherwise None
+        r = cls.query.get(req_id)
+        if not r or r.pin_id != pin_id:
+            return None
+        return r
+
 class Shortlist(db.Model):  # ENTITY
     id = db.Column(db.Integer, primary_key=True)
     csr_id = db.Column(db.Integer, db.ForeignKey('user.id'))
@@ -216,15 +263,40 @@ class Shortlist(db.Model):  # ENTITY
         exists = cls.query.filter_by(csr_id=csr_id, request_id=request_id).first()
         if not exists:
             db.session.add(cls(csr_id=csr_id, request_id=request_id))
-            # bump shortlist count on request
+            # increase shortlist count on request
             r = Request.query.get(request_id)
             if r:
                 r.shortlist_count = (r.shortlist_count or 0) + 1
             db.session.commit()
 
     @classmethod
+    def exists(cls, csr_id, request_id):
+        # return True if a shortlist record exists for csr_id/request_id
+        return cls.query.filter_by(csr_id=csr_id, request_id=request_id).first() is not None
+
+    @classmethod
     def for_csr(cls, csr_id):
         return cls.query.filter_by(csr_id=csr_id).order_by(cls.created_at.desc()).all()
+
+    @classmethod
+    def search_for_csr(cls, csr_id, q=None):
+        query = cls.query.filter_by(csr_id=csr_id).join(Request)
+        if q:
+            like = f"%{q}%"
+            query = query.filter((Request.title.like(like)) | (Request.description.like(like)))
+        return query.order_by(cls.created_at.desc()).all()
+
+    @classmethod
+    def remove_if_exists(cls, csr_id, request_id):
+        rec = cls.query.filter_by(csr_id=csr_id, request_id=request_id).first()
+        if rec:
+            r = Request.query.get(request_id)
+            if r and (r.shortlist_count or 0) > 0:
+                r.shortlist_count = (r.shortlist_count or 0) - 1
+            db.session.delete(rec)
+            db.session.commit()
+            return True
+        return False
 
 class ServiceHistory(db.Model):  # ENTITY
     id = db.Column(db.Integer, primary_key=True)
@@ -248,6 +320,50 @@ class ServiceHistory(db.Model):  # ENTITY
         if end:
             q = q.filter(cls.date_completed <= end)
         return q.order_by(cls.date_completed.desc()).all()
+
+    @classmethod
+    def filter_for_pin(cls, pin_id, category_id=None, start=None, end=None):
+        # return completed matches for a specific PIN (pin_id) with optional filters
+        q = cls.query.filter_by(pin_id=pin_id)
+        if category_id:
+            q = q.filter_by(category_id=category_id)
+        if start:
+            q = q.filter(cls.date_completed >= start)
+        if end:
+            q = q.filter(cls.date_completed <= end)
+        return q.order_by(cls.date_completed.desc()).all()
+
+    @classmethod
+    def filter_for_csr(cls, csr_id, category_id=None, start=None, end=None):
+        # return completed matches for a specific CSR (csr_id) with optional filters
+        q = cls.query.filter_by(csr_id=csr_id)
+        if category_id:
+            q = q.filter_by(category_id=category_id)
+        if start:
+            q = q.filter(cls.date_completed >= start)
+        if end:
+            q = q.filter(cls.date_completed <= end)
+        return q.order_by(cls.date_completed.desc()).all()
+
+    @classmethod
+    def paginate_for_csr(cls, csr_id, category_id=None, start=None, end=None, page=1, per_page=12):
+        # return a paginated dict of completed matches for a specific CSR.
+        # { items, total, page, per_page, pages }
+        q = cls.query.filter_by(csr_id=csr_id)
+        if category_id:
+            q = q.filter_by(category_id=category_id)
+        if start:
+            q = q.filter(cls.date_completed >= start)
+        if end:
+            q = q.filter(cls.date_completed <= end)
+        pag = q.order_by(cls.date_completed.desc()).paginate(page=page, per_page=per_page, error_out=False)
+        return {
+            'items': pag.items,
+            'total': pag.total,
+            'page': pag.page,
+            'per_page': pag.per_page,
+            'pages': pag.pages,
+        }
 
 def seed_database():
     # Seed categories if empty

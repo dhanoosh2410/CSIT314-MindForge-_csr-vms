@@ -8,6 +8,48 @@
       <div class="card mb-3">
         <div class="card-body">
           <h3 class="card-title">CSR Representative</h3>
+          <div class="row mb-3">
+            <div class="col-md-6">
+              <div class="card bg-light mb-2">
+                <div class="card-body py-2">
+                  <h5 class="card-title mb-2">My Shortlist</h5>
+                  <ul class="list-group list-group-flush">
+                    {% for s in shortlist %}
+                      <li class="list-group-item d-flex justify-content-between align-items-center py-2">
+                        <a href="{{ url_for('boundary.csr_request', req_id=s.request.id) }}">{{ s.request.title }}</a>
+                        <form method="post" action="{{ url_for('boundary.csr_unsave', req_id=s.request.id) }}" class="mb-0">
+                          <button class="btn btn-sm btn-outline-danger">Remove</button>
+                        </form>
+                      </li>
+                    {% else %}
+                      <li class="list-group-item">You have no saved requests.</li>
+                    {% endfor %}
+                  </ul>
+                  <div class="mt-2"><a href="{{ url_for('boundary.csr_shortlist') }}">View full shortlist</a></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="col-md-6">
+              <div class="card bg-light mb-2">
+                <div class="card-body py-2">
+                  <h5 class="card-title mb-2">Recent History</h5>
+                  <ul class="list-unstyled mb-0">
+                    {% for h in history_preview %}
+                      <li class="mb-2">
+                        <div><strong>{{ h.request.title if h.request else '-' }}</strong></div>
+                        <small class="text-muted">Completed: {{ h.date_completed.date() }} - Volunteer: {{ h.csr.profile.full_name if h.csr and h.csr.profile else (h.csr.username if h.csr else '-') }}</small>
+                      </li>
+                    {% else %}
+                      <li>No recent completed services.</li>
+                    {% endfor %}
+                  </ul>
+                  <div class="mt-2"><a href="{{ url_for('boundary.csr_history') }}">View full history</a></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <form method="get" class="row g-2 mb-3">
             <div class="col-md-8">
               <select name="category_id" class="form-select">
@@ -30,9 +72,17 @@
                 <td>{{ r.views_count }}</td>
                 <td>{{ r.shortlist_count }}</td>
                 <td>
-                  <form method="post" action="{{ url_for('boundary.csr_save', req_id=r.id) }}" class="d-inline-block">
-                    <button class="btn btn-sm btn-success">Save</button>
-                  </form>
+                  <a class="btn btn-sm btn-outline-secondary d-inline-block me-1" href="{{ url_for('boundary.csr_request', req_id=r.id) }}">View</a>
+                  {% if r.id in saved_ids %}
+                    <span class="badge bg-success me-2">Saved</span>
+                    <form method="post" action="{{ url_for('boundary.csr_unsave', req_id=r.id) }}" class="d-inline-block">
+                      <button class="btn btn-sm btn-danger">Remove</button>
+                    </form>
+                  {% else %}
+                    <form method="post" action="{{ url_for('boundary.csr_save', req_id=r.id) }}" class="d-inline-block">
+                      <button class="btn btn-sm btn-success">Save</button>
+                    </form>
+                  {% endif %}
                 </td>
               </tr>
               {% endfor %}
@@ -40,11 +90,24 @@
             </table>
           </div>
 
-          <h5 class="mt-4">My Shortlist</h5>
-          <ul class="list-group mb-2">
-            {% for s in shortlist %}<li class="list-group-item">{{ s.request.title }} ({{ s.request.category.name }})</li>{% else %}<li class="list-group-item">No saved requests.</li>{% endfor %}
-          </ul>
-          <a class="btn btn-link" href="{{ url_for('boundary.csr_history') }}">View History</a>
+          <!-- Pagination -->
+          <nav aria-label="Page navigation">
+            <ul class="pagination justify-content-center">
+              {% set cur = page or 1 %}
+              {% set last = pages or 1 %}
+              <li class="page-item {{ 'disabled' if cur <= 1 }}">
+                <a class="page-link" href="{{ url_for('boundary.csr_dashboard', page=cur-1, per_page=per_page, category_id=category_id) }}" tabindex="-1">Previous</a>
+              </li>
+              {% for p in range(1, last+1) %}
+                <li class="page-item {{ 'active' if p==cur else '' }}"><a class="page-link" href="{{ url_for('boundary.csr_dashboard', page=p, per_page=per_page, category_id=category_id) }}">{{ p }}</a></li>
+              {% endfor %}
+              <li class="page-item {{ 'disabled' if cur >= last }}">
+                <a class="page-link" href="{{ url_for('boundary.csr_dashboard', page=cur+1, per_page=per_page, category_id=category_id) }}">Next</a>
+              </li>
+            </ul>
+          </nav>
+
+            
         </div>
       </div>
     </div>
@@ -70,6 +133,94 @@
               <tbody>{% for h in items %}<tr><td>{{ h.date_completed.date() }}</td><td>{{ h.request.title if h.request else '-' }}</td><td>{{ h.category.name if h.category else '-' }}</td></tr>{% endfor %}</tbody>
             </table>
           </div>
+          <!-- Pagination for history -->
+          <nav aria-label="History pagination">
+            <ul class="pagination justify-content-center">
+              {% set cur = page or 1 %}
+              {% set last = pages or 1 %}
+              <li class="page-item {{ 'disabled' if cur <= 1 }}">
+                <a class="page-link" href="{{ url_for('boundary.csr_history', page=cur-1, per_page=per_page, category_id=category_id, start=start, end=end) }}" tabindex="-1">Previous</a>
+              </li>
+              {% for p in range(1, last+1) %}
+                <li class="page-item {{ 'active' if p==cur else '' }}"><a class="page-link" href="{{ url_for('boundary.csr_history', page=p, per_page=per_page, category_id=category_id, start=start, end=end) }}">{{ p }}</a></li>
+              {% endfor %}
+              <li class="page-item {{ 'disabled' if cur >= last }}">
+                <a class="page-link" href="{{ url_for('boundary.csr_history', page=cur+1, per_page=per_page, category_id=category_id, start=start, end=end) }}">Next</a>
+              </li>
+            </ul>
+          </nav>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% if view == 'detail' %}
+<div class="container">
+  <div class="row justify-content-center">
+    <div class="col-md-8">
+      <div class="card mb-3">
+        <div class="card-body">
+          <h3 class="card-title">Request Details</h3>
+          <h5>{{ request_item.title }}</h5>
+          <p class="text-muted">Category: {{ request_item.category.name if request_item.category else '-' }} - Views: {{ request_item.views_count }} - Shortlists: {{ request_item.shortlist_count }}</p>
+          <p>{{ request_item.description }}</p>
+
+          <div class="mb-3">
+            <strong>Owner:</strong>
+            {% if request_item.pin and request_item.pin.profile %}
+              {{ request_item.pin.profile.full_name }} <small class="text-muted">({{ request_item.pin.username }})</small>
+            {% else %}
+              {{ request_item.pin.username if request_item.pin else '-' }}
+            {% endif %}
+          </div>
+
+          <div class="d-flex gap-2">
+            {% if saved %}
+              <form method="post" action="{{ url_for('boundary.csr_unsave', req_id=request_item.id) }}">
+                <button class="btn btn-danger">Remove from Shortlist</button>
+              </form>
+            {% else %}
+              <form method="post" action="{{ url_for('boundary.csr_save', req_id=request_item.id) }}">
+                <button class="btn btn-success">Save to Shortlist</button>
+              </form>
+            {% endif %}
+            <a class="btn btn-secondary" href="{{ url_for('boundary.csr_dashboard') }}">Back</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% if view == 'shortlist' %}
+<div class="container">
+  <div class="row justify-content-center">
+    <div class="col-md-10">
+      <div class="card">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center">
+            <h3>My Shortlist</h3>
+            <form method="get" class="d-flex" style="max-width:360px;">
+              <input name="sq" class="form-control form-control-sm me-2" placeholder="Search shortlist" value="{{ shortlist_q if shortlist_q is defined else '' }}" />
+              <button class="btn btn-sm btn-outline-secondary">Search</button>
+            </form>
+          </div>
+          <hr />
+          <ul class="list-group mb-2">
+            {% for s in shortlist %}
+              <li class="list-group-item d-flex justify-content-between align-items-center">
+                <a href="{{ url_for('boundary.csr_request', req_id=s.request.id) }}">{{ s.request.title }}</a>
+                <form method="post" action="{{ url_for('boundary.csr_unsave', req_id=s.request.id) }}">
+                  <button class="btn btn-sm btn-danger">Remove</button>
+                </form>
+              </li>
+            {% else %}
+              <li class="list-group-item">No saved requests.</li>
+            {% endfor %}
+          </ul>
         </div>
       </div>
     </div>

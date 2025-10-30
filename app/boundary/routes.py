@@ -84,7 +84,7 @@ def admin_create_user():
         role=request.form.get('role'),
         username=request.form.get('username'),
         password=request.form.get('password'),
-        active=True,  # new users start active
+        active=True,
         full_name=request.form.get('full_name'),
         email=request.form.get('email'),
         phone=request.form.get('phone'),
@@ -110,7 +110,8 @@ def admin_update_user(user_id):
         role=request.form.get('role'),
         username=request.form.get('username'),
         password=request.form.get('password'),
-        active=request.form.get('active') == 'on',
+        # this is here to fix the suspension of account when updating a user.
+        active=request.form.get('active'),
         full_name=request.form.get('full_name'),
         email=request.form.get('email'),
         phone=request.form.get('phone'),
@@ -138,9 +139,92 @@ def csr_dashboard():
     AuthController.require_role('CSR Representative')
     categories = CSRController.get_categories()
     qcat = request.args.get('category_id', type=int)
-    requests_list = CSRController.search_requests(category_id=qcat)
-    shortlist = CSRController.get_shortlist()
-    return render_template('csr_rep.html', view='dashboard', categories=categories, requests=requests_list, shortlist=shortlist, category_id=qcat)
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 12, type=int)
+    pag = CSRController.search_requests(category_id=qcat, page=page, per_page=per_page)
+    requests_list = pag['items']
+    full_shortlist = CSRController.get_shortlist()
+    history_items = CSRController.history() or []
+    saved_ids = {s.request_id for s in (full_shortlist or [])}
+    return render_template(
+        'csr_rep.html',
+        view='dashboard',
+        categories=categories,
+        requests=requests_list,
+        saved_ids=saved_ids,
+        category_id=qcat,
+        page=pag['page'],
+        per_page=pag['per_page'],
+        total=pag['total'],
+        pages=pag['pages'],
+        shortlist=(full_shortlist or [])[:5],
+        history_preview=(history_items or [])[:5]
+    )
+
+
+@boundary_bp.route('/csr/request/<int:req_id>/save', methods=['POST'])
+def csr_save(req_id):
+    AuthController.require_role('CSR Representative')
+    CSRController.save_request(req_id)
+    flash('Saved to shortlist.')
+    return redirect(url_for('boundary.csr_dashboard'))
+
+
+@boundary_bp.route('/csr/request/<int:req_id>/unsave', methods=['POST'])
+def csr_unsave(req_id):
+    AuthController.require_role('CSR Representative')
+    ok = CSRController.remove_request(req_id)
+    if ok:
+        flash('Removed from shortlist.')
+    else:
+        flash('Not in shortlist.')
+    return redirect(url_for('boundary.csr_dashboard'))
+
+@boundary_bp.route('/csr/history')
+def csr_history():
+    AuthController.require_role('CSR Representative')
+    categories = CSRController.get_categories()
+    category_id = request.args.get('category_id', type=int)
+    start = request.args.get('start')
+    end = request.args.get('end')
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 12, type=int)
+    pag = CSRController.history(category_id=category_id, start=start, end=end, page=page, per_page=per_page)
+    items = pag['items']
+    return render_template(
+        'csr_rep.html',
+        view='history',
+        categories=categories,
+        items=items,
+        page=pag['page'],
+        per_page=pag['per_page'],
+        total=pag['total'],
+        pages=pag['pages'],
+        category_id=category_id,
+        start=start,
+        end=end,
+    )
+
+@boundary_bp.route('/csr/request/<int:req_id>')
+def csr_request(req_id):
+    AuthController.require_role('CSR Representative')
+    categories = CSRController.get_categories()
+    r = CSRController.get_request(req_id)
+    if not r:
+        flash('Request not found or not available.')
+        return redirect(url_for('boundary.csr_dashboard'))
+    saved = CSRController.is_saved_by(req_id)
+    return render_template('csr_rep.html', view='detail', request_item=r, categories=categories, saved=saved)
+
+@boundary_bp.route('/csr/shortlist')
+def csr_shortlist():
+    AuthController.require_role('CSR Representative')
+    categories = CSRController.get_categories()
+    sq = request.args.get('sq','').strip()
+    shortlist = CSRController.search_shortlist(sq) if sq else CSRController.get_shortlist()
+    full_shortlist = CSRController.get_shortlist()
+    saved_ids = {s.request_id for s in (full_shortlist or [])}
+    return render_template('csr_rep.html', view='shortlist', categories=categories, shortlist=shortlist, saved_ids=saved_ids, shortlist_q=sq)
 
 # ---------- PIN ----------
 @boundary_bp.route('/pin')
@@ -150,6 +234,73 @@ def pin_dashboard():
     q = request.args.get('q','').strip()
     reqs = PINController.list_my_requests(q)
     return render_template('pin.html', view='dashboard', categories=categories, reqs=reqs, q=q)
+
+
+@boundary_bp.route('/pin/request/new', methods=['GET'])
+def pin_new_req():
+    AuthController.require_role('Person in Need')
+    categories = PINController.get_categories()
+    return render_template('pin.html', view='create', categories=categories)
+
+
+# PIN: CRUD for requests
+@boundary_bp.route('/pin/request/create', methods=['POST'])
+def pin_create_req():
+    AuthController.require_role('Person in Need')
+    ok, msg = PINController.create_request(
+        title=request.form.get('title'),
+        description=request.form.get('description'),
+        category_id=request.form.get('category_id')
+    )
+    flash(msg)
+    return redirect(url_for('boundary.pin_dashboard'))
+
+
+@boundary_bp.route('/pin/request/<int:req_id>/update', methods=['POST'])
+def pin_update_req(req_id):
+    AuthController.require_role('Person in Need')
+    ok, msg = PINController.update_request(
+        req_id,
+        title=request.form.get('title'),
+        description=request.form.get('description'),
+        category_id=request.form.get('category_id'),
+        status=request.form.get('status') or 'open'
+    )
+    flash(msg)
+    return redirect(url_for('boundary.pin_dashboard'))
+
+
+@boundary_bp.route('/pin/request/<int:req_id>/edit', methods=['GET'])
+def pin_edit_req(req_id):
+    AuthController.require_role('Person in Need')
+    r = PINController.get_request(req_id)
+    if not r:
+        flash('Request not found or permission denied.')
+        return redirect(url_for('boundary.pin_dashboard'))
+    categories = PINController.get_categories()
+    return render_template('pin.html', view='edit', req=r, categories=categories)
+
+
+@boundary_bp.route('/pin/request/<int:req_id>/delete', methods=['POST'])
+def pin_delete_req(req_id):
+    AuthController.require_role('Person in Need')
+    ok = PINController.delete_request(req_id)
+    if ok:
+        flash('Request deleted.')
+    else:
+        flash('Request not found or permission denied.')
+    return redirect(url_for('boundary.pin_dashboard'))
+
+
+@boundary_bp.route('/pin/history')
+def pin_history():
+    AuthController.require_role('Person in Need')
+    categories = PINController.get_categories()
+    category_id = request.args.get('category_id', type=int)
+    start = request.args.get('start')
+    end = request.args.get('end')
+    items = PINController.history(category_id=category_id, start=start, end=end)
+    return render_template('pin.html', view='history', categories=categories, items=items)
 
 # ---------- Platform Manager ----------
 @boundary_bp.route('/pm')
