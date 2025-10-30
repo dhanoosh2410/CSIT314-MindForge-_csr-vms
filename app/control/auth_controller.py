@@ -1,4 +1,3 @@
-
 # CONTROL: Authentication and authorization rules
 from flask import session, abort
 from ..entity.models import User
@@ -6,7 +5,6 @@ from ..entity.models import User
 class AuthController:
     @staticmethod
     def login(role, username, password):
-        # Delegate authentication to the User model
         return User.login(role, username, password)
 
     @staticmethod
