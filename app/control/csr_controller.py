@@ -11,9 +11,9 @@ class CSRController:
 
     @staticmethod
     def search_requests(category_id=None, page=1, per_page=12):
-        # return paginated open requests, incrementing view counts for the returned page.
-        # { items, total, page, per_page, pages }
-        return Request.paginate_open(category_id=category_id, page=page, per_page=per_page)
+        # return paginated open requests without changing view counts.
+        # views will only be incremented when the CSR opens the detail
+        return Request.paginate_open_no_increment(category_id=category_id, page=page, per_page=per_page)
 
     @staticmethod
     def save_request(req_id):
@@ -51,7 +51,19 @@ class CSRController:
 
     @staticmethod
     def get_request(req_id):
-        return Request.get_if_open(req_id)
+        # return the open request and increment views only once per CSR session
+        r = Request.get_if_open(req_id)
+        if not r:
+            return None
+        viewed = session.get('viewed_requests') or set()
+        if isinstance(viewed, list):
+            viewed = set(viewed)
+        if r.id not in viewed:
+            # increment the counter and mark as viewed in this session
+            Request.increment_views(r.id)
+            viewed.add(r.id)
+            session['viewed_requests'] = list(viewed)
+        return r
 
     @staticmethod
     def is_saved_by(req_id):

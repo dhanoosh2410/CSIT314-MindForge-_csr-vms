@@ -1,5 +1,6 @@
 # BOUNDARY: All HTTP routes and request handling
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash
+from types import SimpleNamespace
 from ..control.auth_controller import AuthController
 from ..control.user_admin_controller import UserAdminController
 from ..control.csr_controller import CSRController
@@ -144,7 +145,11 @@ def csr_dashboard():
     pag = CSRController.search_requests(category_id=qcat, page=page, per_page=per_page)
     requests_list = pag['items']
     full_shortlist = CSRController.get_shortlist()
-    history_items = CSRController.history() or []
+    history_pag = CSRController.history()
+    if isinstance(history_pag, dict):
+        history_items = history_pag.get('items', [])
+    else:
+        history_items = history_pag or []
     saved_ids = {s.request_id for s in (full_shortlist or [])}
     return render_template(
         'csr_rep.html',
@@ -232,8 +237,12 @@ def pin_dashboard():
     AuthController.require_role('Person in Need')
     categories = PINController.get_categories()
     q = request.args.get('q','').strip()
-    reqs = PINController.list_my_requests(q)
-    return render_template('pin.html', view='dashboard', categories=categories, reqs=reqs, q=q)
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 12, type=int)
+    pag = PINController.list_my_requests(q, page=page, per_page=per_page)
+    reqs = pag['items']
+    history_preview = PINController.history() or []
+    return render_template('pin.html', view='dashboard', categories=categories, reqs=reqs, q=q, page=pag['page'], per_page=pag['per_page'], total=pag['total'], pages=pag['pages'], history_preview=(history_preview or [])[:5])
 
 
 @boundary_bp.route('/pin/request/new', methods=['GET'])
@@ -259,6 +268,8 @@ def pin_create_req():
 @boundary_bp.route('/pin/request/<int:req_id>/update', methods=['POST'])
 def pin_update_req(req_id):
     AuthController.require_role('Person in Need')
+    next_url = request.form.get('next') or url_for('boundary.pin_dashboard')
+
     ok, msg = PINController.update_request(
         req_id,
         title=request.form.get('title'),
@@ -266,8 +277,30 @@ def pin_update_req(req_id):
         category_id=request.form.get('category_id'),
         status=request.form.get('status') or 'open'
     )
+    if ok:
+        flash(msg)
+        return redirect(next_url)
+    # re-render the edit form with submitted values so user can correct
     flash(msg)
-    return redirect(url_for('boundary.pin_dashboard'))
+    categories = PINController.get_categories()
+    # recreate a lightweight request object to fill the form and include current views_count
+    cat_raw = request.form.get('category_id')
+    try:
+        cat_val = int(cat_raw) if cat_raw else None
+    except (TypeError, ValueError):
+        cat_val = None
+    # fetch existing record to show accurate views_count if available
+    existing = PINController.get_request(req_id)
+    views = existing.views_count if existing else 0
+    req_obj = SimpleNamespace(
+        id=req_id,
+        title=(request.form.get('title') or '').strip(),
+        description=(request.form.get('description') or ''),
+        category_id=cat_val,
+        status=request.form.get('status') or 'open',
+        views_count=views,
+    )
+    return render_template('pin.html', view='edit', req=req_obj, categories=categories, next=next_url, page=request.form.get('page', 1), per_page=request.form.get('per_page', 12), q=request.form.get('q',''))
 
 
 @boundary_bp.route('/pin/request/<int:req_id>/edit', methods=['GET'])
@@ -278,18 +311,25 @@ def pin_edit_req(req_id):
         flash('Request not found or permission denied.')
         return redirect(url_for('boundary.pin_dashboard'))
     categories = PINController.get_categories()
-    return render_template('pin.html', view='edit', req=r, categories=categories)
+    # preserve caller pagination/search via query params and expose a `next` URL
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 12, type=int)
+    q = request.args.get('q','').strip()
+    next_url = request.args.get('next') or url_for('boundary.pin_dashboard', page=page, per_page=per_page, q=q)
+    return render_template('pin.html', view='edit', req=r, categories=categories, next=next_url, page=page, per_page=per_page, q=q)
 
 
 @boundary_bp.route('/pin/request/<int:req_id>/delete', methods=['POST'])
 def pin_delete_req(req_id):
     AuthController.require_role('Person in Need')
+    # preserve caller pagination/search via optional 'next' hidden field
+    next_url = request.form.get('next') or url_for('boundary.pin_dashboard')
     ok = PINController.delete_request(req_id)
     if ok:
         flash('Request deleted.')
     else:
         flash('Request not found or permission denied.')
-    return redirect(url_for('boundary.pin_dashboard'))
+    return redirect(next_url)
 
 
 @boundary_bp.route('/pin/history')
@@ -299,8 +339,9 @@ def pin_history():
     category_id = request.args.get('category_id', type=int)
     start = request.args.get('start')
     end = request.args.get('end')
-    items = PINController.history(category_id=category_id, start=start, end=end)
-    return render_template('pin.html', view='history', categories=categories, items=items)
+    q = request.args.get('q','').strip()
+    items = PINController.history(category_id=category_id, start=start, end=end, q=q)
+    return render_template('pin.html', view='history', categories=categories, items=items, category_id=category_id, start=start, end=end, q=q)
 
 # ---------- Platform Manager ----------
 @boundary_bp.route('/pm')

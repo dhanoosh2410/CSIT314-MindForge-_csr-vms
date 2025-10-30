@@ -2,6 +2,7 @@
 # ENTITY: Database models and data persistence (maps to tables)
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
+from sqlalchemy import or_
 import hashlib, random
 
 db = SQLAlchemy()
@@ -201,12 +202,46 @@ class Request(db.Model):  # ENTITY
         }
 
     @classmethod
+    def paginate_open_no_increment(cls, category_id=None, page=1, per_page=12):
+        # same as paginate_open but does not change views_count
+        query = cls.query.filter_by(status='open')
+        if category_id:
+            query = query.filter_by(category_id=category_id)
+        query = query.order_by(cls.created_at.desc())
+        pag = query.paginate(page=page, per_page=per_page, error_out=False)
+        return {
+            'items': pag.items,
+            'total': pag.total,
+            'page': pag.page,
+            'per_page': pag.per_page,
+            'pages': pag.pages,
+        }
+
+    @classmethod
     def get_if_open(cls, req_id):
         # return the Request when it exists and is open, otherwise None
         r = cls.query.get(req_id)
         if not r or r.status != 'open':
             return None
         return r
+
+    @classmethod
+    def increment_views(cls, req_id):
+        # atomic-ish increment of views_count for a request
+        r = cls.query.get(req_id)
+        if not r:
+            return
+        r.views_count = (r.views_count or 0) + 1
+        db.session.commit()
+
+    @classmethod
+    def increment_views_bulk(cls, req_ids):
+        if not req_ids:
+            return
+        rows = cls.query.filter(cls.id.in_(req_ids)).all()
+        for r in rows:
+            r.views_count = (r.views_count or 0) + 1
+        db.session.commit()
 
     @classmethod
     def create_for_pin(cls, pin_id, title, description, category_id):
@@ -220,10 +255,23 @@ class Request(db.Model):  # ENTITY
         r = cls.query.get(req_id)
         if not r:
             return False
+        # detect status transition to 'completed' so we can record a ServiceHistory
+        prev_status = r.status
         r.title = title
         r.description = description
         r.category_id = category_id
         r.status = status
+        # if this request was changed to completed now (from a non-completed state),
+        # create a ServiceHistory entry so PIN and CSR history views can show it.
+        try:
+            if prev_status != 'completed' and status == 'completed':
+                # csr_id may not always be known (e.g., PIN marks their own request completed),
+                # so record the pin_id and request/category references. csr_id left as None when unknown.
+                sh = ServiceHistory(pin_id=r.pin_id, csr_id=None, request_id=r.id, category_id=r.category_id)
+                db.session.add(sh)
+        except Exception:
+            # If ServiceHistory isn't available for any reason, proceed without failing the update.
+            pass
         db.session.commit()
         return True
 
@@ -231,6 +279,12 @@ class Request(db.Model):  # ENTITY
     def delete_by_id(cls, req_id):
         r = cls.query.get(req_id)
         if r:
+            # remove any shortlist entries referencing this request to avoid orphans
+            try:
+                Shortlist.query.filter_by(request_id=req_id).delete()
+            except Exception:
+                # Shortlist may not be defined yet when this method is inspected; ignore
+                pass
             db.session.delete(r)
             db.session.commit()
 
@@ -243,10 +297,31 @@ class Request(db.Model):  # ENTITY
         return query.order_by(cls.created_at.desc()).all()
 
     @classmethod
+    def paginate_for_pin(cls, pin_id, q=None, page=1, per_page=12):
+        """Return paginated requests belonging to a PIN with optional text query."""
+        query = cls.query.filter_by(pin_id=pin_id)
+        # by default, exclude completed requests from the main PIN listing
+        query = query.filter(cls.status != 'completed')
+        if q:
+            like = f"%{q}%"
+            query = query.filter((cls.title.like(like)) | (cls.description.like(like)))
+        pag = query.order_by(cls.created_at.desc()).paginate(page=page, per_page=per_page, error_out=False)
+        return {
+            'items': pag.items,
+            'total': pag.total,
+            'page': pag.page,
+            'per_page': pag.per_page,
+            'pages': pag.pages,
+        }
+
+    @classmethod
     def get_for_pin(cls, req_id, pin_id):
         # return the request if it exists and belongs to pin_id, otherwise None
         r = cls.query.get(req_id)
         if not r or r.pin_id != pin_id:
+            return None
+        # Do not allow PIN owners to edit/delete requests that are already completed
+        if r.status == 'completed':
             return None
         return r
 
@@ -322,16 +397,32 @@ class ServiceHistory(db.Model):  # ENTITY
         return q.order_by(cls.date_completed.desc()).all()
 
     @classmethod
-    def filter_for_pin(cls, pin_id, category_id=None, start=None, end=None):
+    def filter_for_pin(cls, pin_id, category_id=None, start=None, end=None, q=None):
         # return completed matches for a specific PIN (pin_id) with optional filters
-        q = cls.query.filter_by(pin_id=pin_id)
+        qry = cls.query.filter_by(pin_id=pin_id)
         if category_id:
-            q = q.filter_by(category_id=category_id)
+            qry = qry.filter_by(category_id=category_id)
         if start:
-            q = q.filter(cls.date_completed >= start)
+            qry = qry.filter(cls.date_completed >= start)
         if end:
-            q = q.filter(cls.date_completed <= end)
-        return q.order_by(cls.date_completed.desc()).all()
+            qry = qry.filter(cls.date_completed <= end)
+        # optional free-text search across volunteer name/username, request title or category name
+        if q:
+            like = f"%{q}%"
+            # join related objects to allow filtering on their columns
+            try:
+                # join CSR (volunteer) and their profile, and the request and category
+                qry = qry.join(cls.csr, isouter=True).join(UserProfile, User.profile, isouter=True).join(cls.request, isouter=True).join(cls.category, isouter=True)
+                qry = qry.filter(or_(
+                    UserProfile.full_name.like(like),
+                    User.username.like(like),
+                    Request.title.like(like),
+                    Category.name.like(like),
+                ))
+            except Exception:
+                # if joins fail for any reason, fall back to returning unfiltered results
+                pass
+        return qry.order_by(cls.date_completed.desc()).all()
 
     @classmethod
     def filter_for_csr(cls, csr_id, category_id=None, start=None, end=None):

@@ -16,10 +16,14 @@
                   <ul class="list-group list-group-flush">
                     {% for s in shortlist %}
                       <li class="list-group-item d-flex justify-content-between align-items-center py-2">
-                        <a href="{{ url_for('boundary.csr_request', req_id=s.request.id) }}">{{ s.request.title }}</a>
-                        <form method="post" action="{{ url_for('boundary.csr_unsave', req_id=s.request.id) }}" class="mb-0">
-                          <button class="btn btn-sm btn-outline-danger">Remove</button>
-                        </form>
+                        {% if s.request %}
+                          <a href="{{ url_for('boundary.csr_request', req_id=s.request.id) }}">{{ s.request.title }}</a>
+                          <form method="post" action="{{ url_for('boundary.csr_unsave', req_id=s.request.id) }}" class="mb-0">
+                            <button class="btn btn-sm btn-outline-danger">Remove</button>
+                          </form>
+                        {% else %}
+                          <span class="text-muted">[Request deleted]</span>
+                        {% endif %}
                       </li>
                     {% else %}
                       <li class="list-group-item">You have no saved requests.</li>
@@ -212,10 +216,14 @@
           <ul class="list-group mb-2">
             {% for s in shortlist %}
               <li class="list-group-item d-flex justify-content-between align-items-center">
-                <a href="{{ url_for('boundary.csr_request', req_id=s.request.id) }}">{{ s.request.title }}</a>
-                <form method="post" action="{{ url_for('boundary.csr_unsave', req_id=s.request.id) }}">
-                  <button class="btn btn-sm btn-danger">Remove</button>
-                </form>
+                {% if s.request %}
+                  <a href="{{ url_for('boundary.csr_request', req_id=s.request.id) }}">{{ s.request.title }}</a>
+                  <form method="post" action="{{ url_for('boundary.csr_unsave', req_id=s.request.id) }}">
+                    <button class="btn btn-sm btn-danger">Remove</button>
+                  </form>
+                {% else %}
+                  <span class="text-muted">[Request deleted]</span>
+                {% endif %}
               </li>
             {% else %}
               <li class="list-group-item">No saved requests.</li>

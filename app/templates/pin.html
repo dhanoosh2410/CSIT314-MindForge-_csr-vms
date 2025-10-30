@@ -48,22 +48,41 @@
 <div class="container">
   <div class="row">
     <div class="col-md-8 offset-md-2">
-      <div class="card mb-3">
-        <div class="card-body">
-          <h3 class="card-title">Person-In-Need</h3>
-          <p>Create a new request using the button below.</p>
-          <a class="btn btn-success" href="{{ url_for('boundary.pin_new_req') }}">Create Request</a>
-        </div>
-      </div>
+          <div class="row mb-3">
+            <div class="col-md-6">
+              <div class="card mb-0">
+                <div class="card-body">
+                  <h3 class="card-title">Person-In-Need</h3>
+                  <p class="mb-2">Create a new request using the button below.</p>
+                  <a class="btn btn-success" href="{{ url_for('boundary.pin_new_req') }}">Create Request</a>
+                </div>
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="card mb-0">
+                <div class="card-body">
+                  <h5 class="card-title">Recent Matches</h5>
+                  <ul class="list-unstyled mb-0">
+                    {% for h in history_preview %}
+                      <li class="mb-2"><strong>{{ h.request.title if h.request else '-' }}</strong><br /><small class="text-muted">Completed: {{ h.date_completed.date() }}</small></li>
+                    {% else %}
+                      <li>No recent completed services.</li>
+                    {% endfor %}
+                  </ul>
+                  <div class="mt-2"><a href="{{ url_for('boundary.pin_history') }}">View Completed Matches</a></div>
+                </div>
+              </div>
+            </div>
+          </div>
 
-      <div class="card mb-3">
-        <div class="card-body">
-          <form method="get" class="row g-2 mb-3">
-            <div class="col-md-10"><input name="q" class="form-control" placeholder="Search my requests" value="{{ q }}"></div>
-            <div class="col-md-2"><button class="btn btn-outline-secondary">Search</button></div>
-          </form>
+          <div class="card mb-3">
+            <div class="card-body">
+              <form method="get" class="row g-2 mb-3">
+                <div class="col-md-10"><input name="q" class="form-control" placeholder="Search my requests" value="{{ q }}"></div>
+                <div class="col-md-2"><button class="btn btn-outline-secondary">Search</button></div>
+              </form>
 
-          <h5>My Requests</h5>
+              <h5>My Requests</h5>
           {% if reqs and reqs|length > 0 %}
           <div class="table-responsive">
             <table class="table table-striped pin-table">
@@ -86,8 +105,9 @@
                 <td>{{ r.views_count }}</td>
                 <td>{{ r.shortlist_count }}</td>
                 <td>
-                  <a class="btn btn-sm btn-primary d-inline-block me-1" href="{{ url_for('boundary.pin_edit_req', req_id=r.id) }}">Edit</a>
-                  <form method="post" action="{{ url_for('boundary.pin_delete_req', req_id=r.id) }}" class="d-inline-block">
+                  <a class="btn btn-sm btn-primary d-inline-block me-1" href="{{ url_for('boundary.pin_edit_req', req_id=r.id, page=page, per_page=per_page, q=q) }}">Edit</a>
+                  <form method="post" action="{{ url_for('boundary.pin_delete_req', req_id=r.id) }}" class="d-inline-block" onsubmit="return confirm('Are you sure you want to delete this request?');">
+                    <input type="hidden" name="next" value="{{ url_for('boundary.pin_dashboard', page=page, per_page=per_page, q=q) }}" />
                     <button class="btn btn-sm btn-danger">Delete</button>
                   </form>
                 </td>
@@ -99,7 +119,22 @@
           {% else %}
             <div class="alert alert-info">You have no requests. Use the form above to create your first request.</div>
           {% endif %}
-          <a class="btn btn-link" href="{{ url_for('boundary.pin_history') }}">View Completed Matches</a>
+          <!-- Pagination -->
+          <nav aria-label="PIN requests pagination">
+            <ul class="pagination justify-content-center">
+              {% set cur = page or 1 %}
+              {% set last = pages or 1 %}
+              <li class="page-item {{ 'disabled' if cur <= 1 }}">
+                <a class="page-link" href="{{ url_for('boundary.pin_dashboard', page=cur-1, per_page=per_page, q=q) }}" tabindex="-1">Previous</a>
+              </li>
+              {% for p in range(1, last+1) %}
+                <li class="page-item {{ 'active' if p==cur else '' }}"><a class="page-link" href="{{ url_for('boundary.pin_dashboard', page=p, per_page=per_page, q=q) }}">{{ p }}</a></li>
+              {% endfor %}
+              <li class="page-item {{ 'disabled' if cur >= last }}">
+                <a class="page-link" href="{{ url_for('boundary.pin_dashboard', page=cur+1, per_page=per_page, q=q) }}">Next</a>
+              </li>
+            </ul>
+          </nav>
         </div>
       </div>
     </div>
@@ -115,9 +150,18 @@
         <div class="card-body">
           <h3 class="card-title">Edit Request</h3>
           <form method="post" action="{{ url_for('boundary.pin_update_req', req_id=req.id) }}">
+            <input type="hidden" name="next" value="{{ next or url_for('boundary.pin_dashboard', page=page, per_page=per_page, q=q) }}" />
+            <input type="hidden" name="page" value="{{ page }}" />
+            <input type="hidden" name="per_page" value="{{ per_page }}" />
+            <input type="hidden" name="q" value="{{ q }}" />
             <div class="mb-3">
               <label class="form-label">Title</label>
               <input name="title" class="form-control" value="{{ req.title }}" required />
+            </div>
+            <div class="mb-2 d-flex gap-3">
+              <small class="text-muted">Views: {{ req.views_count or 0 }}</small>
+              <small class="text-muted">Shortlists: {{ req.shortlist_count or 0 }}</small>
+            </div>
             </div>
             <div class="mb-3">
               <label class="form-label">Description</label>
@@ -140,7 +184,7 @@
             </div>
             <div class="d-flex gap-2">
               <button class="btn btn-primary">Save</button>
-              <a class="btn btn-secondary" href="{{ url_for('boundary.pin_dashboard') }}">Cancel</a>
+              <a class="btn btn-secondary" href="{{ next or url_for('boundary.pin_dashboard', page=page, per_page=per_page, q=q) }}">Cancel</a>
             </div>
           </form>
         </div>
@@ -158,10 +202,22 @@
         <div class="card-body">
           <h3>PIN - Completed Matches</h3>
           <form method="get" class="row g-2 mb-3">
-            <div class="col-md-3"><label class="form-label">Category</label><select name="category_id" class="form-select"><option value="">All</option>{% for c in categories %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select></div>
-            <div class="col-md-3"><label class="form-label">Start</label><input type="date" name="start" class="form-control"></div>
-            <div class="col-md-3"><label class="form-label">End</label><input type="date" name="end" class="form-control"></div>
-            <div class="col-md-3 d-flex align-items-end"><button class="btn btn-secondary">Filter</button></div>
+            <div class="col-md-3">
+              <label class="form-label">Category</label>
+              <select name="category_id" class="form-select">
+                <option value="">All</option>
+                {% for c in categories %}
+                  <option value="{{ c.id }}" {% if category_id and (c.id == category_id) %}selected{% endif %}>{{ c.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Search</label>
+              <input name="q" class="form-control" placeholder="Volunteer or service" value="{{ q or '' }}">
+            </div>
+            <div class="col-md-2"><label class="form-label">Start</label><input type="date" name="start" class="form-control" value="{{ start or '' }}"></div>
+            <div class="col-md-2"><label class="form-label">End</label><input type="date" name="end" class="form-control" value="{{ end or '' }}"></div>
+            <div class="col-md-2 d-flex align-items-end"><button class="btn btn-secondary">Filter</button></div>
           </form>
           <div class="table-responsive">
             <table class="table table-striped pin-table">
