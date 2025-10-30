@@ -11,13 +11,8 @@ class CSRController:
 
     @staticmethod
     def search_requests(category_id=None, page=1, per_page=12):
-        """Return paginated open requests, incrementing view counts for the returned page.
-
-        Returns a dict similar to other paginated helpers:
-        { items, total, page, per_page, pages }
-        """
-        # Delegate paging + view-bump to the Request entity layer so the
-        # controller remains a thin bridge between boundary and entity.
+        # return paginated open requests, incrementing view counts for the returned page.
+        # { items, total, page, per_page, pages }
         return Request.paginate_open(category_id=category_id, page=page, per_page=per_page)
 
     @staticmethod
