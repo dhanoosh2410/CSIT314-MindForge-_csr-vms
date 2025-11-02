@@ -1,23 +1,25 @@
 # BOUNDARY: All HTTP routes and request handling
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash
 from types import SimpleNamespace
+
 from ..control.auth_controller import AuthController
 from ..control.user_admin_controller import UserAdminController
 from ..control.csr_controller import CSRController
 from ..control.pin_controller import PINController
-from ..control.pm_controller import PMController
-from ..control.report_controller import ReportController
+from ..control.pm_controller import PMController  # <-- use Control, not Entity
 
 boundary_bp = Blueprint('boundary', __name__)
 
 # ---------- Auth ----------
 @boundary_bp.route('/', methods=['GET'])
 def home():
-    # render login page
-    return render_template('login.html', body_class='bg login')
+    """Render the login page."""
+    return render_template('auth.html', page='login', body_class='bg login')
+
 
 @boundary_bp.route('/login', methods=['POST'])
 def login():
+    """Handle user login and redirect by role."""
     role = request.form.get('role')
     username = request.form.get('username')
     password = request.form.get('password')
@@ -27,22 +29,23 @@ def login():
         session['role'] = user.role
         session['username'] = user.username
         if user.role == 'User Admin':
-            # land on CREATE USER as requested
             return redirect(url_for('boundary.admin_new_user'))
-        if user.role == 'CSR Representative':
+        elif user.role == 'CSR Representative':
             return redirect(url_for('boundary.csr_dashboard'))
-        if user.role == 'Person in Need':
+        elif user.role == 'Person in Need':
             return redirect(url_for('boundary.pin_dashboard'))
-        if user.role == 'Platform Manager':
+        elif user.role == 'Platform Manager':
             return redirect(url_for('boundary.pm_dashboard'))
     flash('Invalid credentials or suspended account.')
     return redirect(url_for('boundary.home'))
 
+
 @boundary_bp.route('/logout')
 def logout():
-    session.clear()
-    flash('Logged out.')
-    return redirect(url_for('boundary.home'))
+    """Clear session and render logout page."""
+    username = session.get('username', '')
+    AuthController.logout()
+    return render_template('auth.html', page='logout', username=username, body_class='bg login')
 
 # ---------- User Admin ----------
 @boundary_bp.route('/admin')
@@ -166,14 +169,12 @@ def csr_dashboard():
         history_preview=(history_items or [])[:5]
     )
 
-
 @boundary_bp.route('/csr/request/<int:req_id>/save', methods=['POST'])
 def csr_save(req_id):
     AuthController.require_role('CSR Representative')
     CSRController.save_request(req_id)
     flash('Saved to shortlist.')
     return redirect(url_for('boundary.csr_dashboard'))
-
 
 @boundary_bp.route('/csr/request/<int:req_id>/unsave', methods=['POST'])
 def csr_unsave(req_id):
@@ -244,13 +245,11 @@ def pin_dashboard():
     history_preview = PINController.history() or []
     return render_template('pin.html', view='dashboard', categories=categories, reqs=reqs, q=q, page=pag['page'], per_page=pag['per_page'], total=pag['total'], pages=pag['pages'], history_preview=(history_preview or [])[:5])
 
-
 @boundary_bp.route('/pin/request/new', methods=['GET'])
 def pin_new_req():
     AuthController.require_role('Person in Need')
     categories = PINController.get_categories()
     return render_template('pin.html', view='create', categories=categories)
-
 
 # PIN: CRUD for requests
 @boundary_bp.route('/pin/request/create', methods=['POST'])
@@ -263,7 +262,6 @@ def pin_create_req():
     )
     flash(msg)
     return redirect(url_for('boundary.pin_dashboard'))
-
 
 @boundary_bp.route('/pin/request/<int:req_id>/update', methods=['POST'])
 def pin_update_req(req_id):
@@ -302,7 +300,6 @@ def pin_update_req(req_id):
     )
     return render_template('pin.html', view='edit', req=req_obj, categories=categories, next=next_url, page=request.form.get('page', 1), per_page=request.form.get('per_page', 12), q=request.form.get('q',''))
 
-
 @boundary_bp.route('/pin/request/<int:req_id>/edit', methods=['GET'])
 def pin_edit_req(req_id):
     AuthController.require_role('Person in Need')
@@ -318,7 +315,6 @@ def pin_edit_req(req_id):
     next_url = request.args.get('next') or url_for('boundary.pin_dashboard', page=page, per_page=per_page, q=q)
     return render_template('pin.html', view='edit', req=r, categories=categories, next=next_url, page=page, per_page=per_page, q=q)
 
-
 @boundary_bp.route('/pin/request/<int:req_id>/delete', methods=['POST'])
 def pin_delete_req(req_id):
     AuthController.require_role('Person in Need')
@@ -330,7 +326,6 @@ def pin_delete_req(req_id):
     else:
         flash('Request not found or permission denied.')
     return redirect(next_url)
-
 
 @boundary_bp.route('/pin/history')
 def pin_history():
@@ -347,8 +342,9 @@ def pin_history():
 @boundary_bp.route('/pm')
 def pm_dashboard():
     AuthController.require_role('Platform Manager')
-    categories = PMController.search_categories(request.args.get('q','').strip())
-    return render_template('pm.html', view='dashboard', categories=categories, q=request.args.get('q','').strip())
+    q = request.args.get('q','').strip()
+    categories = PMController.search_categories(q)
+    return render_template('pm.html', view='dashboard', categories=categories, q=q)
 
 @boundary_bp.route('/pm/category/create', methods=['POST'])
 def pm_create_cat():
@@ -375,5 +371,5 @@ def pm_delete_cat(cat_id):
 def pm_reports():
     AuthController.require_role('Platform Manager')
     scope = request.args.get('scope', 'daily')
-    data = ReportController.generate(scope)
+    data = PMController.generate_report(scope)
     return render_template('pm.html', view='reports', scope=scope, data=data)

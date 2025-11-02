@@ -1,4 +1,3 @@
-
 # BOUNDARY: Flask app factory and blueprint registration
 from flask import Flask, request, redirect, url_for, flash, session
 from .entity.models import db, seed_database

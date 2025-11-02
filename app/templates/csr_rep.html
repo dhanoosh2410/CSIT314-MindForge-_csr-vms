@@ -1,239 +1,471 @@
-{% extends 'base.html' %}
-{% block content %}
+{% set uname = session.get('username','Username') %}
+{% set urole = (session.get('role','CSR Representative') | upper) %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>CSR Representative</title>
+  <style>
+    /*
+      This stylesheet mirrors the look and feel of the user admin page.  It
+      defines a consistent colour palette and layout for a top bar, side bar
+      and main content area.  Tables are styled with alternating row colours
+      and clear column separators.  Utility classes such as .btn, .pager and
+      .filters provide reusable components for buttons, pagination and
+      filter/search rows.
+    */
+    :root {
+      --blue:   #004aad;
+      --light:  #c2e9ff;
+      --red:    #ff2828;
+      --yellow: #ffa51f;
+      --green:  #00bf63;
+      --control-h: 48px;
+    }
 
-{% if view == 'dashboard' %}
-<div class="container">
-  <div class="row justify-content-center">
-    <div class="col-md-10">
-      <div class="card mb-3">
-        <div class="card-body">
-          <h3 class="card-title">CSR Representative</h3>
-          <div class="row mb-3">
-            <div class="col-md-6">
-              <div class="card bg-light mb-2">
-                <div class="card-body py-2">
-                  <h5 class="card-title mb-2">My Shortlist</h5>
-                  <ul class="list-group list-group-flush">
-                    {% for s in shortlist %}
-                      <li class="list-group-item d-flex justify-content-between align-items-center py-2">
-                        {% if s.request %}
-                          <a href="{{ url_for('boundary.csr_request', req_id=s.request.id) }}">{{ s.request.title }}</a>
-                          <form method="post" action="{{ url_for('boundary.csr_unsave', req_id=s.request.id) }}" class="mb-0">
-                            <button class="btn btn-sm btn-outline-danger">Remove</button>
-                          </form>
-                        {% else %}
-                          <span class="text-muted">[Request deleted]</span>
-                        {% endif %}
-                      </li>
-                    {% else %}
-                      <li class="list-group-item">You have no saved requests.</li>
-                    {% endfor %}
-                  </ul>
-                  <div class="mt-2"><a href="{{ url_for('boundary.csr_shortlist') }}">View full shortlist</a></div>
-                </div>
-              </div>
-            </div>
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      font-family: 'Canva Sans', Arial, Helvetica, sans-serif;
+      background: var(--light);
+      color: #000;
+    }
 
-            <div class="col-md-6">
-              <div class="card bg-light mb-2">
-                <div class="card-body py-2">
-                  <h5 class="card-title mb-2">Recent History</h5>
-                  <ul class="list-unstyled mb-0">
-                    {% for h in history_preview %}
-                      <li class="mb-2">
-                        <div><strong>{{ h.request.title if h.request else '-' }}</strong></div>
-                        <small class="text-muted">Completed: {{ h.date_completed.date() }} - Volunteer: {{ h.csr.profile.full_name if h.csr and h.csr.profile else (h.csr.username if h.csr else '-') }}</small>
-                      </li>
-                    {% else %}
-                      <li>No recent completed services.</li>
-                    {% endfor %}
-                  </ul>
-                  <div class="mt-2"><a href="{{ url_for('boundary.csr_history') }}">View full history</a></div>
-                </div>
-              </div>
-            </div>
+    /* Top bar containing the brand and account information */
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--blue);
+      color: #fff;
+      padding: 16px 24px;
+      border-bottom: 2px solid #003d8a;
+    }
+    .brand {
+      font-size: 24px;
+      font-weight: 800;
+    }
+    .account {
+      display: flex;
+      gap: 16px;
+      align-items: center;
+    }
+    .who {
+      text-align: right;
+      line-height: 1.1;
+    }
+    .who .name {
+      display: block;
+      font-size: 24px;
+      font-weight: 800;
+    }
+    .who small {
+      font-weight: 700;
+      opacity: .9;
+    }
+    .logout {
+      background: var(--red);
+      color: #fff;
+      text-decoration: none;
+      font-weight: 800;
+      padding: 8px 18px;
+      border-radius: 10px;
+      border: 1px solid #000;
+    }
+
+    /* Layout container: sidebar + main content */
+    .shell {
+      display: flex;
+      min-height: calc(100vh - 64px);
+    }
+    .sidebar {
+      width: 260px;
+      background: var(--blue);
+      color: #fff;
+      padding: 26px 22px;
+    }
+    .sidebar h3 {
+      margin: 0 0 18px 0;
+      font-size: 20px;
+      font-weight: 800;
+    }
+    .navlink {
+      display: block;
+      color: #fff;
+      text-decoration: none;
+      margin: 14px 0;
+      font-size: 18px;
+      font-weight: 700;
+    }
+    .navlink.active {
+      color: var(--yellow);
+    }
+    .main {
+      flex: 1;
+      background: var(--light);
+      padding: 34px;
+    }
+    .title {
+      font-size: 32px;
+      font-weight: 800;
+      margin: 4px 0 18px 0;
+      text-align: center;
+      color: var(--blue);
+    }
+
+    /* Buttons */
+    .btn {
+      display: inline-block;
+      border: 1.5px solid #000;
+      border-radius: 10px;
+      font-weight: 800;
+      padding: 10px 20px;
+      cursor: pointer;
+      text-align: center;
+      text-decoration: none;
+      font-size: 14px;
+    }
+    .btn-red { background: var(--red); color: #fff; }
+    .btn-green { background: var(--green); color: #fff; }
+    .btn-orange {
+      background: var(--yellow);
+      color: #000;
+      border-radius: 14px;
+      font-weight: 800;
+      padding: 10px 22px;
+    }
+    .btn-disabled {
+      opacity: 0.6;
+      pointer-events: none;
+    }
+
+    /* Filters row */
+    .filters {
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      justify-content: flex-start;
+      margin: 10px auto 14px;
+      max-width: 880px;
+    }
+    .filters .search { flex: 1; }
+    .filters .search input {
+      height: var(--control-h);
+      border: 1px solid #000;
+      border-radius: 14px;
+      padding: 0 16px;
+      font-size: 18px;
+      width: 100%;
+    }
+    .filters .select-wrap { position: relative; display: inline-block; }
+    .filters .select-blue {
+      appearance: none;
+      background: #0f4fb4;
+      color: #fff;
+      font-weight: 800;
+      height: var(--control-h);
+      padding: 0 46px 0 16px;
+      border: 1px solid #000;
+      border-radius: 18px;
+      font-size: 18px;
+      min-width: 220px;
+      box-shadow: inset 0 0 0 2px rgba(255,255,255,.12);
+    }
+    .filters .select-wrap::after {
+      content: "";
+      position: absolute;
+      right: 14px;
+      top: 50%;
+      transform: translateY(-50%) rotate(45deg);
+      width: 10px;
+      height: 10px;
+      border-right: 3px solid #fff;
+      border-bottom: 3px solid #fff;
+      pointer-events: none;
+    }
+
+    /* Table styles */
+    .tablewrap {
+      max-width: 880px;
+      margin: 0 auto;
+      background: #fff;
+      border: 1px solid #000;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      font-size: 16px;
+    }
+    thead {
+      background: #0a4aa9;
+      color: #fff;
+    }
+    th, td {
+      padding: 14px 16px;
+      border-bottom: 1px solid #d5e6f7;
+      border-right: 1px solid #d5e6f7;
+      vertical-align: middle;
+    }
+    th:last-child, td:last-child { border-right: none; }
+    th:first-child, td:first-child { width: 64px; }
+    .actions { text-align: right; }
+    tbody tr:nth-child(even) td { background: #f7f9fb; }
+    tbody tr:nth-child(odd) td { background: #ffffff; }
+
+    /* Pagination */
+    .pager {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      justify-content: center;
+      margin: 16px 0;
+    }
+    .pagebtn {
+      border: 1.5px solid #000;
+      border-radius: 8px;
+      background: #fff;
+      padding: 8px 12px;
+      text-decoration: none;
+      color: #000;
+    }
+    .pagebtn.active {
+      background: #1e66e8;
+      color: #fff;
+      border-color: #000;
+    }
+    .pagebtn.disabled {
+      opacity: 0.5;
+      pointer-events: none;
+    }
+    /* Detail card */
+    .detail-card {
+      max-width: 880px;
+      margin: 0 auto;
+      background: #fff;
+      border: 1px solid #000;
+      border-radius: 12px;
+      padding: 24px;
+      color: var(--blue);
+    }
+    .detail-card h2 { margin-top: 0; }
+    .detail-card p { margin: 8px 0; }
+    .detail-actions {
+      display: flex;
+      gap: 14px;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- TOP BAR -->
+  <div class="topbar">
+    <div class="brand">VOLUNTEER MANAGEMENT SYSTEM</div>
+    <div class="account">
+      <div class="who">
+        <span class="name">{{ uname }}</span>
+        <small>{{ urole }}</small>
+      </div>
+      <a href="{{ url_for('boundary.logout') }}" class="logout">LOGOUT</a>
+    </div>
+  </div>
+
+  <div class="shell">
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+      <h3>CV Management</h3>
+      <a class="navlink {% if view == 'dashboard' %}active{% endif %}" href="{{ url_for('boundary.csr_dashboard') }}">PIN Requests</a>
+      <a class="navlink {% if view == 'shortlist' %}active{% endif %}" href="{{ url_for('boundary.csr_shortlist') }}">Shortlist</a>
+      <a class="navlink {% if view == 'history' %}active{% endif %}" href="{{ url_for('boundary.csr_history') }}">Completed Requests</a>
+    </aside>
+
+    <!-- MAIN CONTENT -->
+    <main class="main">
+      {% if view == 'dashboard' %}
+        <h1 class="title">PIN REQUESTS</h1>
+        <!-- Category filter -->
+        <form class="filters" method="get" action="{{ url_for('boundary.csr_dashboard') }}">
+          <div class="select-wrap">
+            <select class="select-blue" name="category_id" onchange="this.form.submit()">
+              <option value="">All Categories</option>
+              {% for c in categories %}
+                <option value="{{ c.id }}" {{ 'selected' if category_id==c.id else '' }}>{{ c.name }}</option>
+              {% endfor %}
+            </select>
           </div>
-
-          <form method="get" class="row g-2 mb-3">
-            <div class="col-md-8">
-              <select name="category_id" class="form-select">
-                <option value="">All</option>
-                {% for c in categories %}<option value="{{ c.id }}" {{ 'selected' if category_id==c.id }}>{{ c.name }}</option>{% endfor %}
-              </select>
-            </div>
-            <div class="col-md-4 text-end"><button class="btn btn-outline-secondary">Filter</button></div>
-          </form>
-
-          <h5>Available PIN Requests</h5>
-          <div class="table-responsive">
-            <table class="table table-striped">
-              <thead><tr><th>Title</th><th>Category</th><th>Views</th><th>Shortlisted</th><th>Action</th></tr></thead>
-              <tbody>
+        </form>
+        <!-- Requests table -->
+        <div class="tablewrap">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Title</th>
+                <th>Category</th>
+                <th>Views</th>
+                <th>Shortlists</th>
+                <th class="actions">Action</th>
+              </tr>
+            </thead>
+            <tbody>
               {% for r in requests %}
               <tr>
-                <td>{{ r.title }}</td>
+                <td>{{ loop.index + ((page-1)*per_page if page else 0) }}</td>
+                <td><a href="{{ url_for('boundary.csr_request', req_id=r.id) }}">{{ r.title }}</a></td>
                 <td>{{ r.category.name }}</td>
                 <td>{{ r.views_count }}</td>
                 <td>{{ r.shortlist_count }}</td>
-                <td>
-                  <a class="btn btn-sm btn-outline-secondary d-inline-block me-1" href="{{ url_for('boundary.csr_request', req_id=r.id) }}">View</a>
+                <td class="actions">
                   {% if r.id in saved_ids %}
-                    <span class="badge bg-success me-2">Saved</span>
-                    <form method="post" action="{{ url_for('boundary.csr_unsave', req_id=r.id) }}" class="d-inline-block">
-                      <button class="btn btn-sm btn-danger">Remove</button>
+                    <form method="post" action="{{ url_for('boundary.csr_unsave', req_id=r.id) }}" style="display:inline-block;">
+                      <button class="btn btn-red" type="submit">Remove</button>
                     </form>
                   {% else %}
-                    <form method="post" action="{{ url_for('boundary.csr_save', req_id=r.id) }}" class="d-inline-block">
-                      <button class="btn btn-sm btn-success">Save</button>
+                    <form method="post" action="{{ url_for('boundary.csr_save', req_id=r.id) }}" style="display:inline-block;">
+                      <button class="btn btn-green" type="submit">Save</button>
                     </form>
                   {% endif %}
                 </td>
               </tr>
+              {% else %}
+              <tr><td colspan="6">No requests available.</td></tr>
               {% endfor %}
-              </tbody>
-            </table>
-          </div>
-
-          <!-- Pagination -->
-          <nav aria-label="Page navigation">
-            <ul class="pagination justify-content-center">
-              {% set cur = page or 1 %}
-              {% set last = pages or 1 %}
-              <li class="page-item {{ 'disabled' if cur <= 1 }}">
-                <a class="page-link" href="{{ url_for('boundary.csr_dashboard', page=cur-1, per_page=per_page, category_id=category_id) }}" tabindex="-1">Previous</a>
-              </li>
-              {% for p in range(1, last+1) %}
-                <li class="page-item {{ 'active' if p==cur else '' }}"><a class="page-link" href="{{ url_for('boundary.csr_dashboard', page=p, per_page=per_page, category_id=category_id) }}">{{ p }}</a></li>
-              {% endfor %}
-              <li class="page-item {{ 'disabled' if cur >= last }}">
-                <a class="page-link" href="{{ url_for('boundary.csr_dashboard', page=cur+1, per_page=per_page, category_id=category_id) }}">Next</a>
-              </li>
-            </ul>
-          </nav>
-
-            
+            </tbody>
+          </table>
         </div>
-      </div>
-    </div>
-  </div>
-</div>
-{% endif %}
-
-{% if view == 'history' %}
-<div class="container">
-  <div class="row justify-content-center">
-    <div class="col-md-10">
-      <div class="card">
-        <div class="card-body">
-          <h3>CSR - Completed Services</h3>
-          <form method="get" class="row g-2 mb-3">
-            <div class="col-md-3"><select name="category_id" class="form-select"><option value="">All</option>{% for c in categories %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select></div>
-            <div class="col-md-3"><input type="date" name="start" class="form-control"></div>
-            <div class="col-md-3"><input type="date" name="end" class="form-control"></div>
-            <div class="col-md-3 d-flex align-items-end"><button class="btn btn-secondary">Filter</button></div>
-          </form>
-          <div class="table-responsive">
-            <table class="table table-striped"><thead><tr><th>Date</th><th>Request</th><th>Category</th></tr></thead>
-              <tbody>{% for h in items %}<tr><td>{{ h.date_completed.date() }}</td><td>{{ h.request.title if h.request else '-' }}</td><td>{{ h.category.name if h.category else '-' }}</td></tr>{% endfor %}</tbody>
-            </table>
-          </div>
-          <!-- Pagination for history -->
-          <nav aria-label="History pagination">
-            <ul class="pagination justify-content-center">
-              {% set cur = page or 1 %}
-              {% set last = pages or 1 %}
-              <li class="page-item {{ 'disabled' if cur <= 1 }}">
-                <a class="page-link" href="{{ url_for('boundary.csr_history', page=cur-1, per_page=per_page, category_id=category_id, start=start, end=end) }}" tabindex="-1">Previous</a>
-              </li>
-              {% for p in range(1, last+1) %}
-                <li class="page-item {{ 'active' if p==cur else '' }}"><a class="page-link" href="{{ url_for('boundary.csr_history', page=p, per_page=per_page, category_id=category_id, start=start, end=end) }}">{{ p }}</a></li>
-              {% endfor %}
-              <li class="page-item {{ 'disabled' if cur >= last }}">
-                <a class="page-link" href="{{ url_for('boundary.csr_history', page=cur+1, per_page=per_page, category_id=category_id, start=start, end=end) }}">Next</a>
-              </li>
-            </ul>
-          </nav>
+        <!-- Pagination -->
+        {% if pages and pages > 1 %}
+        <div class="pager">
+          <a class="pagebtn {{ 'disabled' if page<=1 else '' }}" href="{{ url_for('boundary.csr_dashboard', category_id=category_id, page=page-1, per_page=per_page) }}">Previous</a>
+          {% for p in range(1, pages+1) %}
+            <a class="pagebtn {{ 'active' if p==page else '' }}" href="{{ url_for('boundary.csr_dashboard', category_id=category_id, page=p, per_page=per_page) }}">{{ p }}</a>
+          {% endfor %}
+          <a class="pagebtn {{ 'disabled' if page>=pages else '' }}" href="{{ url_for('boundary.csr_dashboard', category_id=category_id, page=page+1, per_page=per_page) }}">Next</a>
         </div>
-      </div>
-    </div>
-  </div>
-</div>
-{% endif %}
+        {% endif %}
 
-{% if view == 'detail' %}
-<div class="container">
-  <div class="row justify-content-center">
-    <div class="col-md-8">
-      <div class="card mb-3">
-        <div class="card-body">
-          <h3 class="card-title">Request Details</h3>
-          <h5>{{ request_item.title }}</h5>
-          <p class="text-muted">Category: {{ request_item.category.name if request_item.category else '-' }} - Views: {{ request_item.views_count }} - Shortlists: {{ request_item.shortlist_count }}</p>
+      {% elif view == 'shortlist' %}
+        <h1 class="title">MY SHORTLIST</h1>
+        <!-- Shortlist search -->
+        <form method="get" action="{{ url_for('boundary.csr_shortlist') }}" class="filters">
+          <div class="search">
+            <input type="text" name="sq" value="{{ shortlist_q if shortlist_q is defined else '' }}" placeholder="Search shortlist" />
+          </div>
+          <button class="btn-orange" type="submit">Search</button>
+        </form>
+        <!-- Shortlist table -->
+        <div class="tablewrap">
+          <table>
+            <thead>
+              <tr><th>#</th><th>Title</th><th class="actions">Action</th></tr>
+            </thead>
+            <tbody>
+              {% for s in shortlist %}
+                {% if s.request %}
+                <tr>
+                  <td>{{ loop.index }}</td>
+                  <td><a href="{{ url_for('boundary.csr_request', req_id=s.request.id) }}">{{ s.request.title }}</a></td>
+                  <td class="actions">
+                    <form method="post" action="{{ url_for('boundary.csr_unsave', req_id=s.request.id) }}" style="display:inline-block;">
+                      <button class="btn btn-red" type="submit">Remove</button>
+                    </form>
+                  </td>
+                </tr>
+                {% else %}
+                <tr>
+                  <td>{{ loop.index }}</td>
+                  <td colspan="2"><span class="text-muted">[Request deleted]</span></td>
+                </tr>
+                {% endif %}
+              {% else %}
+                <tr><td colspan="3">No saved requests.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+      {% elif view == 'history' %}
+        <h1 class="title">COMPLETED PIN REQUESTS</h1>
+        <!-- History filter: category and date range -->
+        <form method="get" action="{{ url_for('boundary.csr_history') }}" class="filters">
+          <div class="select-wrap">
+            <select class="select-blue" name="category_id">
+              <option value="">All Categories</option>
+              {% for c in categories %}
+                <option value="{{ c.id }}" {{ 'selected' if category_id==c.id else '' }}>{{ c.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="search"><input type="date" name="start" value="{{ start if start else '' }}" /></div>
+          <div class="search"><input type="date" name="end" value="{{ end if end else '' }}" /></div>
+          <button class="btn-orange" type="submit">Filter</button>
+        </form>
+        <!-- History table -->
+        <div class="tablewrap">
+          <table>
+            <thead>
+              <tr><th>#</th><th>Date</th><th>Request</th><th>Category</th></tr>
+            </thead>
+            <tbody>
+              {% for h in items %}
+              <tr>
+                <td>{{ loop.index + ((page-1)*per_page if page else 0) }}</td>
+                <td>{{ h.date_completed.date() }}</td>
+                <td>{{ h.request.title if h.request else '-' }}</td>
+                <td>{{ h.category.name if h.category else '-' }}</td>
+              </tr>
+              {% else %}
+              <tr><td colspan="4">No completed services.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% if pages and pages > 1 %}
+        <div class="pager">
+          <a class="pagebtn {{ 'disabled' if page<=1 else '' }}" href="{{ url_for('boundary.csr_history', category_id=category_id, start=start, end=end, page=page-1, per_page=per_page) }}">Previous</a>
+          {% for p in range(1, pages+1) %}
+            <a class="pagebtn {{ 'active' if p==page else '' }}" href="{{ url_for('boundary.csr_history', category_id=category_id, start=start, end=end, page=p, per_page=per_page) }}">{{ p }}</a>
+          {% endfor %}
+          <a class="pagebtn {{ 'disabled' if page>=pages else '' }}" href="{{ url_for('boundary.csr_history', category_id=category_id, start=start, end=end, page=page+1, per_page=per_page) }}">Next</a>
+        </div>
+        {% endif %}
+
+      {% elif view == 'detail' %}
+        <h1 class="title">REQUEST DETAILS</h1>
+        <div class="detail-card">
+          <h2>{{ request_item.title }}</h2>
+          <p><strong>Category:</strong> {{ request_item.category.name if request_item.category else '-' }}</p>
+          <p><strong>Views:</strong> {{ request_item.views_count }}</p>
+          <p><strong>Shortlists:</strong> {{ request_item.shortlist_count }}</p>
           <p>{{ request_item.description }}</p>
-
-          <div class="mb-3">
-            <strong>Owner:</strong>
+          <p><strong>Owner:</strong>
             {% if request_item.pin and request_item.pin.profile %}
               {{ request_item.pin.profile.full_name }} <small class="text-muted">({{ request_item.pin.username }})</small>
             {% else %}
               {{ request_item.pin.username if request_item.pin else '-' }}
             {% endif %}
-          </div>
-
-          <div class="d-flex gap-2">
+          </p>
+          <div class="detail-actions">
             {% if saved %}
               <form method="post" action="{{ url_for('boundary.csr_unsave', req_id=request_item.id) }}">
-                <button class="btn btn-danger">Remove from Shortlist</button>
+                <button class="btn btn-red" type="submit">Remove from Shortlist</button>
               </form>
             {% else %}
               <form method="post" action="{{ url_for('boundary.csr_save', req_id=request_item.id) }}">
-                <button class="btn btn-success">Save to Shortlist</button>
+                <button class="btn btn-green" type="submit">Save to Shortlist</button>
               </form>
             {% endif %}
-            <a class="btn btn-secondary" href="{{ url_for('boundary.csr_dashboard') }}">Back</a>
+            <a class="btn btn-orange" href="{{ url_for('boundary.csr_dashboard') }}">Back</a>
           </div>
         </div>
-      </div>
-    </div>
+      {% endif %}
+    </main>
   </div>
-</div>
-{% endif %}
 
-{% if view == 'shortlist' %}
-<div class="container">
-  <div class="row justify-content-center">
-    <div class="col-md-10">
-      <div class="card">
-        <div class="card-body">
-          <div class="d-flex justify-content-between align-items-center">
-            <h3>My Shortlist</h3>
-            <form method="get" class="d-flex" style="max-width:360px;">
-              <input name="sq" class="form-control form-control-sm me-2" placeholder="Search shortlist" value="{{ shortlist_q if shortlist_q is defined else '' }}" />
-              <button class="btn btn-sm btn-outline-secondary">Search</button>
-            </form>
-          </div>
-          <hr />
-          <ul class="list-group mb-2">
-            {% for s in shortlist %}
-              <li class="list-group-item d-flex justify-content-between align-items-center">
-                {% if s.request %}
-                  <a href="{{ url_for('boundary.csr_request', req_id=s.request.id) }}">{{ s.request.title }}</a>
-                  <form method="post" action="{{ url_for('boundary.csr_unsave', req_id=s.request.id) }}">
-                    <button class="btn btn-sm btn-danger">Remove</button>
-                  </form>
-                {% else %}
-                  <span class="text-muted">[Request deleted]</span>
-                {% endif %}
-              </li>
-            {% else %}
-              <li class="list-group-item">No saved requests.</li>
-            {% endfor %}
-          </ul>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-{% endif %}
-
-{% endblock %}
+</body>
+</html>

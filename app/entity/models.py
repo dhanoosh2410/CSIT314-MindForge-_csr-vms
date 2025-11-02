@@ -1,13 +1,13 @@
-
-# ENTITY: Database models and data persistence (maps to tables)
+# ENTITY + Use-case coordination in one place (per your lecture guidance)
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
-from sqlalchemy import or_
+from sqlalchemy import or_, text
+from sqlalchemy.sql import func  # <-- added for PM reports
 import hashlib, random
 
 db = SQLAlchemy()
 
-# The four fixed “User Accounts" used by admin listing logic
+# Fixed demo accounts (exactly these 4)
 FIXED_ACCOUNTS = {
     ('User Admin', 'user_admin1'),
     ('CSR Representative', 'csr_user1'),
@@ -15,38 +15,42 @@ FIXED_ACCOUNTS = {
     ('Platform Manager', 'pm_user1'),
 }
 
-class User(db.Model):  # ENTITY
+# =========================
+# Entity: User (logins)
+# =========================
+class User(db.Model):
+    """
+    Maps to 'user_accounts' table. Real authentication happens here.
+    """
+    __tablename__ = 'user_accounts'
+
     id = db.Column(db.Integer, primary_key=True)
     role = db.Column(db.String(50), nullable=False)
     username = db.Column(db.String(80), unique=True, nullable=False)
     password_hash = db.Column(db.String(128), nullable=False)
     is_active = db.Column(db.Boolean, default=True)
-    profile = db.relationship('UserProfile', backref='user', uselist=False)
 
-    def set_password(self, raw):
+    def set_password(self, raw: str):
         self.password_hash = hashlib.sha256(raw.encode()).hexdigest()
 
-    def check_password(self, raw):
+    def check_password(self, raw: str) -> bool:
         return self.password_hash == hashlib.sha256(raw.encode()).hexdigest()
 
     @classmethod
     def login(cls, role, username, password):
-        # authenticate a user by role, username and password.
-        # returns the User instance if credentials are valid and the user is active, otherwise returns None
-        user = cls.query.filter_by(username=username, role=role).first()
-        if user and user.is_active and user.check_password(password):
-            return user
+        u = cls.query.filter_by(username=username, role=role).first()
+        if u and u.is_active and u.check_password(password):
+            return u
         return None
+
+    # Keep signatures used by boundary; profile args ignored (profiles are standalone now)
     @classmethod
     def create_with_profile(cls, role, username, password, active, full_name, email, phone):
         if cls.query.filter_by(username=username).first():
             return False, "Username exists."
-        u = cls(role=role, username=username, is_active=active)
+        u = cls(role=role, username=username, is_active=bool(active))
         u.set_password(password)
         db.session.add(u)
-        db.session.flush()
-        p = UserProfile(user_id=u.id, full_name=full_name, email=email, phone=phone)
-        db.session.add(p)
         db.session.commit()
         return True, "User created."
 
@@ -57,19 +61,13 @@ class User(db.Model):  # ENTITY
             return False, "User not found."
         u.role = role
         u.username = username
-        # prevents suspension on updating a user
         if active is not None:
             if isinstance(active, str):
-                u.is_active = active.lower() in ('on', 'true', '1')
+                u.is_active = active.lower() in ('on','true','1')
             else:
                 u.is_active = bool(active)
         if password:
             u.set_password(password)
-        if not u.profile:
-            u.profile = UserProfile(user_id=u.id)
-        u.profile.full_name = full_name
-        u.profile.email = email
-        u.profile.phone = phone
         db.session.commit()
         return True, "User updated."
 
@@ -88,30 +86,20 @@ class User(db.Model):  # ENTITY
             db.session.commit()
 
     @classmethod
-    def search_users(cls, q: str = "", user_type: str = "accounts", page: int = 1, per_page: int = 20):
-        # user_type: 'accounts' (only the four fixed accounts) or 'profiles' (everything else)
+    def search_accounts_fixed_four(cls, q: str = "", page: int = 1, per_page: int = 20):
+        """
+        Return ONLY the four fixed accounts from user_accounts.
+        """
         query = cls.query
-        # filter by type
-        if user_type == 'accounts':
-            ors = [ (cls.role == r) & (cls.username == u) for (r, u) in FIXED_ACCOUNTS ]
-            f = ors[0]
-            for cond in ors[1:]:
-                f = f | cond
-            query = query.filter(f)
-        else:
-            # profiles = NOT the four fixed accounts
-            for (r, u) in FIXED_ACCOUNTS:
-                query = query.filter(~((cls.role == r) & (cls.username == u)))
+        ors = [ (cls.role == r) & (cls.username == u) for (r, u) in FIXED_ACCOUNTS ]
+        f = ors[0]
+        for cond in ors[1:]:
+            f = f | cond
+        query = query.filter(f)
 
-        # optional free-text search
         if q:
             like = f"%{q}%"
-            query = query.join(UserProfile, isouter=True).filter(
-                (cls.username.like(like)) |
-                (cls.role.like(like)) |
-                (UserProfile.full_name.like(like)) |
-                (UserProfile.email.like(like))
-            )
+            query = query.filter((cls.username.like(like)) | (cls.role.like(like)))
 
         query = query.order_by(cls.id.asc())
         pag = query.paginate(page=page, per_page=per_page, error_out=False)
@@ -123,14 +111,46 @@ class User(db.Model):  # ENTITY
             "pages": pag.pages,
         }
 
-class UserProfile(db.Model):  # ENTITY
+
+# =========================
+# Entity: UserProfile (standalone, no FK to User)
+# =========================
+class UserProfile(db.Model):
+    """
+    Standalone profiles table with NO user_id link.
+    """
+    __tablename__ = 'user_profiles'
+
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
     full_name = db.Column(db.String(120))
     email = db.Column(db.String(120))
     phone = db.Column(db.String(30))
 
-class Category(db.Model):  # ENTITY
+    @classmethod
+    def search_profiles(cls, q: str = "", page: int = 1, per_page: int = 20):
+        query = cls.query
+        if q:
+            like = f"%{q}%"
+            query = query.filter(
+                (cls.full_name.like(like)) |
+                (cls.email.like(like)) |
+                (cls.phone.like(like))
+            )
+        query = query.order_by(cls.id.asc())
+        pag = query.paginate(page=page, per_page=per_page, error_out=False)
+        return {
+            "items": pag.items,
+            "total": pag.total,
+            "page": pag.page,
+            "per_page": per_page,
+            "pages": pag.pages,
+        }
+
+
+# =========================
+# Entity: Category
+# =========================
+class Category(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(80), unique=True, nullable=False)
 
@@ -147,14 +167,18 @@ class Category(db.Model):  # ENTITY
 
     @classmethod
     def get_by_id(cls, cat_id):
-    	# return the Category instance or None for the given id
         if cat_id is None:
             return None
         return cls.query.get(cat_id)
 
-class Request(db.Model):  # ENTITY
+
+# =========================
+# Entity: Request (+ helpers)
+# =========================
+class Request(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    pin_id = db.Column(db.Integer, db.ForeignKey('user.id'))   # PIN owner
+    # PIN owner (optional for demo rows)
+    pin_id = db.Column(db.Integer, db.ForeignKey('user_accounts.id'), nullable=True)
     title = db.Column(db.String(120))
     description = db.Column(db.Text)
     category_id = db.Column(db.Integer, db.ForeignKey('category.id'))
@@ -173,7 +197,6 @@ class Request(db.Model):  # ENTITY
         if category_id:
             query = query.filter_by(category_id=category_id)
         items = query.order_by(cls.created_at.desc()).all()
-        # increment views_count for these items (approximate listing views)
         for r in items:
             r.views_count = (r.views_count or 0) + 1
         db.session.commit()
@@ -181,15 +204,12 @@ class Request(db.Model):  # ENTITY
 
     @classmethod
     def paginate_open(cls, category_id=None, page=1, per_page=12):
-        # return a paginated dict of open requests and increment views for the page's items
-        # { items, total, page, per_page, pages }
         query = cls.query.filter_by(status='open')
         if category_id:
             query = query.filter_by(category_id=category_id)
         query = query.order_by(cls.created_at.desc())
         pag = query.paginate(page=page, per_page=per_page, error_out=False)
         items = pag.items
-        # increase views for only the returned items
         for r in items:
             r.views_count = (r.views_count or 0) + 1
         db.session.commit()
@@ -203,7 +223,6 @@ class Request(db.Model):  # ENTITY
 
     @classmethod
     def paginate_open_no_increment(cls, category_id=None, page=1, per_page=12):
-        # same as paginate_open but does not change views_count
         query = cls.query.filter_by(status='open')
         if category_id:
             query = query.filter_by(category_id=category_id)
@@ -219,7 +238,6 @@ class Request(db.Model):  # ENTITY
 
     @classmethod
     def get_if_open(cls, req_id):
-        # return the Request when it exists and is open, otherwise None
         r = cls.query.get(req_id)
         if not r or r.status != 'open':
             return None
@@ -227,7 +245,6 @@ class Request(db.Model):  # ENTITY
 
     @classmethod
     def increment_views(cls, req_id):
-        # atomic-ish increment of views_count for a request
         r = cls.query.get(req_id)
         if not r:
             return
@@ -255,22 +272,16 @@ class Request(db.Model):  # ENTITY
         r = cls.query.get(req_id)
         if not r:
             return False
-        # detect status transition to 'completed' so we can record a ServiceHistory
         prev_status = r.status
         r.title = title
         r.description = description
         r.category_id = category_id
         r.status = status
-        # if this request was changed to completed now (from a non-completed state),
-        # create a ServiceHistory entry so PIN and CSR history views can show it.
         try:
             if prev_status != 'completed' and status == 'completed':
-                # csr_id may not always be known (e.g., PIN marks their own request completed),
-                # so record the pin_id and request/category references. csr_id left as None when unknown.
                 sh = ServiceHistory(pin_id=r.pin_id, csr_id=None, request_id=r.id, category_id=r.category_id)
                 db.session.add(sh)
         except Exception:
-            # If ServiceHistory isn't available for any reason, proceed without failing the update.
             pass
         db.session.commit()
         return True
@@ -279,11 +290,9 @@ class Request(db.Model):  # ENTITY
     def delete_by_id(cls, req_id):
         r = cls.query.get(req_id)
         if r:
-            # remove any shortlist entries referencing this request to avoid orphans
             try:
                 Shortlist.query.filter_by(request_id=req_id).delete()
             except Exception:
-                # Shortlist may not be defined yet when this method is inspected; ignore
                 pass
             db.session.delete(r)
             db.session.commit()
@@ -298,9 +307,7 @@ class Request(db.Model):  # ENTITY
 
     @classmethod
     def paginate_for_pin(cls, pin_id, q=None, page=1, per_page=12):
-        """Return paginated requests belonging to a PIN with optional text query."""
         query = cls.query.filter_by(pin_id=pin_id)
-        # by default, exclude completed requests from the main PIN listing
         query = query.filter(cls.status != 'completed')
         if q:
             like = f"%{q}%"
@@ -316,20 +323,23 @@ class Request(db.Model):  # ENTITY
 
     @classmethod
     def get_for_pin(cls, req_id, pin_id):
-        # return the request if it exists and belongs to pin_id, otherwise None
         r = cls.query.get(req_id)
         if not r or r.pin_id != pin_id:
             return None
-        # Do not allow PIN owners to edit/delete requests that are already completed
         if r.status == 'completed':
             return None
         return r
 
-class Shortlist(db.Model):  # ENTITY
+
+# =========================
+# Entity: Shortlist
+# =========================
+class Shortlist(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    csr_id = db.Column(db.Integer, db.ForeignKey('user.id'))
+    csr_id = db.Column(db.Integer, db.ForeignKey('user_accounts.id'))
     request_id = db.Column(db.Integer, db.ForeignKey('request.id'))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
     csr = db.relationship('User', foreign_keys=[csr_id])
     request = db.relationship('Request')
 
@@ -338,7 +348,6 @@ class Shortlist(db.Model):  # ENTITY
         exists = cls.query.filter_by(csr_id=csr_id, request_id=request_id).first()
         if not exists:
             db.session.add(cls(csr_id=csr_id, request_id=request_id))
-            # increase shortlist count on request
             r = Request.query.get(request_id)
             if r:
                 r.shortlist_count = (r.shortlist_count or 0) + 1
@@ -346,7 +355,6 @@ class Shortlist(db.Model):  # ENTITY
 
     @classmethod
     def exists(cls, csr_id, request_id):
-        # return True if a shortlist record exists for csr_id/request_id
         return cls.query.filter_by(csr_id=csr_id, request_id=request_id).first() is not None
 
     @classmethod
@@ -373,13 +381,18 @@ class Shortlist(db.Model):  # ENTITY
             return True
         return False
 
-class ServiceHistory(db.Model):  # ENTITY
+
+# =========================
+# Entity: ServiceHistory
+# =========================
+class ServiceHistory(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    csr_id = db.Column(db.Integer, db.ForeignKey('user.id'))
-    pin_id = db.Column(db.Integer, db.ForeignKey('user.id'))
+    csr_id = db.Column(db.Integer, db.ForeignKey('user_accounts.id'))
+    pin_id = db.Column(db.Integer, db.ForeignKey('user_accounts.id'))
     request_id = db.Column(db.Integer, db.ForeignKey('request.id'))
     category_id = db.Column(db.Integer, db.ForeignKey('category.id'))
     date_completed = db.Column(db.DateTime, default=datetime.utcnow)
+
     csr = db.relationship('User', foreign_keys=[csr_id])
     pin = db.relationship('User', foreign_keys=[pin_id])
     request = db.relationship('Request')
@@ -398,7 +411,6 @@ class ServiceHistory(db.Model):  # ENTITY
 
     @classmethod
     def filter_for_pin(cls, pin_id, category_id=None, start=None, end=None, q=None):
-        # return completed matches for a specific PIN (pin_id) with optional filters
         qry = cls.query.filter_by(pin_id=pin_id)
         if category_id:
             qry = qry.filter_by(category_id=category_id)
@@ -406,27 +418,18 @@ class ServiceHistory(db.Model):  # ENTITY
             qry = qry.filter(cls.date_completed >= start)
         if end:
             qry = qry.filter(cls.date_completed <= end)
-        # optional free-text search across volunteer name/username, request title or category name
         if q:
             like = f"%{q}%"
-            # join related objects to allow filtering on their columns
-            try:
-                # join CSR (volunteer) and their profile, and the request and category
-                qry = qry.join(cls.csr, isouter=True).join(UserProfile, User.profile, isouter=True).join(cls.request, isouter=True).join(cls.category, isouter=True)
-                qry = qry.filter(or_(
-                    UserProfile.full_name.like(like),
-                    User.username.like(like),
-                    Request.title.like(like),
-                    Category.name.like(like),
-                ))
-            except Exception:
-                # if joins fail for any reason, fall back to returning unfiltered results
-                pass
+            qry = qry.join(cls.request, isouter=True).join(cls.category, isouter=True)
+            qry = qry.filter(or_(
+                User.username.like(like),
+                Request.title.like(like),
+                Category.name.like(like),
+            ))
         return qry.order_by(cls.date_completed.desc()).all()
 
     @classmethod
     def filter_for_csr(cls, csr_id, category_id=None, start=None, end=None):
-        # return completed matches for a specific CSR (csr_id) with optional filters
         q = cls.query.filter_by(csr_id=csr_id)
         if category_id:
             q = q.filter_by(category_id=category_id)
@@ -438,8 +441,6 @@ class ServiceHistory(db.Model):  # ENTITY
 
     @classmethod
     def paginate_for_csr(cls, csr_id, category_id=None, start=None, end=None, page=1, per_page=12):
-        # return a paginated dict of completed matches for a specific CSR.
-        # { items, total, page, per_page, pages }
         q = cls.query.filter_by(csr_id=csr_id)
         if category_id:
             q = q.filter_by(category_id=category_id)
@@ -456,45 +457,204 @@ class ServiceHistory(db.Model):  # ENTITY
             'pages': pag.pages,
         }
 
+    # ------- Reports -------
+    @staticmethod
+    def generate_report(scope='daily'):
+        """
+        Aggregate counts of requests created and services completed
+        grouped by day/week/month, using SQLite's strftime pattern.
+        """
+        if scope == 'weekly':
+            fmt = '%Y-W%W'
+        elif scope == 'monthly':
+            fmt = '%Y-%m'
+        else:
+            fmt = '%Y-%m-%d'
+
+        # Requests created per bucket
+        reqs = (
+            db.session.query(
+                func.strftime(fmt, Request.created_at),
+                func.count(Request.id)
+            )
+            .group_by(func.strftime(fmt, Request.created_at))
+            .all()
+        )
+
+        # Completed services per bucket
+        done = (
+            db.session.query(
+                func.strftime(fmt, ServiceHistory.date_completed),
+                func.count(ServiceHistory.id)
+            )
+            .group_by(func.strftime(fmt, ServiceHistory.date_completed))
+            .all()
+        )
+
+        return {'requests': reqs, 'completed': done}
+
+
+# =========================
+# Utilities: migration + seeding
+# =========================
+def reset_user_tables():
+    """
+    Drop legacy tables and keep schema clean for new design.
+    Run once inside app context:
+        >>> reset_user_tables(); db.create_all()
+    """
+    try:
+        db.session.execute(text('DROP TABLE IF EXISTS user_profile'))
+        db.session.execute(text('DROP TABLE IF EXISTS user'))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        raise
+
+
 def seed_database():
+    # Ensure core tables exist
+    db.create_all()
+
     # Seed categories if empty
     if not Category.query.first():
-        for n in ['Medical Escort','Grocery Run','Wheelchair Repair','Tutoring','Home Maintenance']:
+        for n in ['Medical Escort', 'Grocery Run', 'Wheelchair Repair', 'Tutoring', 'Home Maintenance']:
             db.session.add(Category(name=n))
         db.session.commit()
 
-    # Seed users (4 fixed + 100 random profiles) if empty
-    if not User.query.first():
-        def mk_user(role, username, pwd, active=True):
-            u = User(role=role, username=username, is_active=active)
-            u.set_password(pwd)
-            db.session.add(u)
-            db.session.flush()
-            p = UserProfile(user_id=u.id, full_name=f'{role} {u.id}', email=f'{username}@example.com', phone='9999-0000')
-            db.session.add(p)
-            return u
+    # Clear and seed to exact counts:
+    db.session.execute(text('DELETE FROM user_profiles'))
+    db.session.execute(text('DELETE FROM user_accounts'))
+    db.session.commit()
 
-        mk_user('User Admin', 'user_admin1', 'user_admin1!')
-        mk_user('CSR Representative', 'csr_user1', 'csr_user1!')
-        mk_user('Person in Need', 'pin_user1', 'pin_user1!')
-        mk_user('Platform Manager', 'pm_user1', 'pm_user1!')
+    # Four fixed accounts ONLY (no profiles for them)
+    def createuser(role, username, pwd):
+        u = User(role=role, username=username, is_active=True)
+        u.set_password(pwd)
+        db.session.add(u)
+        db.session.flush()
+        return u
 
-        roles = ['Person in Need','CSR Representative']
-        for i in range(1, 101):
-            role = random.choice(roles)
-            u = User(role=role, username=f'{role.split()[0].lower()}{i}', is_active=True)
-            u.set_password('pass'+str(i))
-            db.session.add(u); db.session.flush()
-            db.session.add(UserProfile(user_id=u.id, full_name=f'Test User {i}', email=f'user{i}@example.com', phone=f'9000{i:04d}'))
-        db.session.commit()
+    createuser('User Admin', 'user_admin1', 'user_admin1!')
+    createuser('CSR Representative', 'csr_user1', 'csr_user1!')
+    createuser('Person in Need', 'pin_user1', 'pin_user1!')
+    createuser('Platform Manager', 'pm_user1', 'pm_user1!')
+    db.session.commit()
 
-    # Seed demo requests & histories if empty
+    # Exactly 100 standalone demo profiles (no user_id)
+    demo_profiles = [
+        UserProfile(full_name=f'Demo Profile {i}', email=f'demo{i}@example.com', phone=f'9000{i:04d}')
+        for i in range(1, 101)
+    ]
+    db.session.add_all(demo_profiles)
+    db.session.commit()
+
+    # Optional demo requests (PIN-less OK)
     if not Request.query.first():
-        pins = User.query.filter_by(role='Person in Need').all()
         cats = Category.query.all()
         for i in range(40):
-            pin = random.choice(pins)
             cat = random.choice(cats)
-            r = Request(pin_id=pin.id, title=f'{cat.name} help #{i+1}', description='Auto-seeded request', category_id=cat.id, status='open')
+            r = Request(pin_id=None,
+                        title=f'{cat.name} help #{i+1}',
+                        description='Auto-seeded request',
+                        category_id=cat.id,
+                        status='open')
             db.session.add(r)
         db.session.commit()
+
+    # --------------------------------------------------------------------------
+    # Additional seeding: create sample requests for the Person in Need user.
+    # We only seed these demo rows if the designated PIN user exists and has no
+    # requests yet.  This allows the UI to be populated with realistic data for
+    # testing without duplicating rows on each app startup.  To override this
+    # behaviour or customise the number of open/completed rows, call
+    # `seed_pin_samples()` manually in an app context.
+    # Determine if the Person-in-Need user has any existing requests.  We refer
+    # to the User class defined above rather than importing from this module,
+    # which would create a circular import.
+    pin_user = User.query.filter_by(username='pin_user1', role='Person in Need').first()
+    if pin_user and not Request.query.filter_by(pin_id=pin_user.id).first():
+        try:
+            seed_pin_samples(pin_username='pin_user1', n_open=60, n_completed=40)
+        except Exception:
+            # swallow any errors during sample seeding to avoid breaking app start
+            pass
+
+
+def seed_pin_samples(pin_username: str = 'pin_user1', n_open: int = 60, n_completed: int = 40):
+    """
+    Create a number of sample request rows owned by the given Person-in-Need user.
+
+    This helper makes it easy to populate the PIN dashboard for testing.  It
+    creates `n_open` open requests and `n_completed` completed requests.  For
+    each completed request, a corresponding ServiceHistory record is created.
+
+    Only call this function inside an app context.  It will raise if the
+    specified user or categories do not exist.
+    """
+    import random
+    from datetime import datetime, timedelta
+
+    # Fetch the PIN user
+    pin = User.query.filter_by(username=pin_username, role='Person in Need').first()
+    if not pin:
+        raise RuntimeError(f"{pin_username!r} not found. Run seed_database() first.")
+
+    # Retrieve available categories
+    cats = Category.query.all()
+    if not cats:
+        raise RuntimeError("No categories found. Run seed_database() first.")
+
+    # Helper to create random timestamps within the last 180 days
+    now = datetime.utcnow()
+    def random_ts():
+        return now - timedelta(days=random.randint(0, 180), hours=random.randint(0, 23), minutes=random.randint(0, 59))
+
+    # Helper to bump view/shortlist counters realistically
+    def bump_counts(req_obj):
+        req_obj.views_count = random.randint(0, 120)
+        req_obj.shortlist_count = random.randint(0, 25)
+
+    # Create open requests
+    for i in range(n_open):
+        cat = random.choice(cats)
+        ts = random_ts()
+        req = Request(
+            pin_id=pin.id,
+            title=f"{cat.name} help (open) #{i+1}",
+            description="Sample open request for testing.",
+            category_id=cat.id,
+            status='open',
+            created_at=ts,
+            updated_at=ts
+        )
+        bump_counts(req)
+        db.session.add(req)
+
+    # Create completed requests and their history
+    for i in range(n_completed):
+        cat = random.choice(cats)
+        created_ts = random_ts()
+        completed_ts = created_ts + timedelta(days=random.randint(1, 15))
+        req = Request(
+            pin_id=pin.id,
+            title=f"{cat.name} help (completed) #{i+1}",
+            description="Sample completed request for testing.",
+            category_id=cat.id,
+            status='completed',
+            created_at=created_ts,
+            updated_at=completed_ts
+        )
+        bump_counts(req)
+        db.session.add(req)
+        db.session.flush()  # ensure req.id exists
+        hist = ServiceHistory(
+            csr_id=None,
+            pin_id=pin.id,
+            request_id=req.id,
+            category_id=cat.id,
+            date_completed=completed_ts
+        )
+        db.session.add(hist)
+
+    db.session.commit()
