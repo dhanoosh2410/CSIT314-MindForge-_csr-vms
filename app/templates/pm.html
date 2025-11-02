@@ -1,81 +1,221 @@
-{% extends 'base.html' %}
-{% block content %}
+{% set uname = session.get('username','pm_user1') %}
+{% set urole = (session.get('role','PLATFORM MANAGER') | upper) %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Platform Manager</title>
+  <style>
+    :root { --blue:#004aad; --light:#c2e9ff; --red:#ff2828; --yellow:#ffa51f; --green:#00bf63; --control-h:48px; }
+    *{box-sizing:border-box} html,body{height:100%}
+    body{margin:0;font-family:'Canva Sans',Arial,Helvetica,sans-serif;background:var(--light)}
+    /* Top bar */
+    .topbar{display:flex;align-items:center;justify-content:space-between;background:var(--blue);color:#fff;padding:16px 24px;border-bottom:2px solid #003d8a}
+    .brand{font-size:24px;font-weight:800}
+    .account{display:flex;gap:16px;align-items:center}
+    .who{text-align:right;line-height:1.1}
+    .who .name{display:block;font-size:24px;font-weight:800}
+    .who small{font-weight:700;opacity:.9}
+    .logout{background:#ff2828;color:#fff;text-decoration:none;font-weight:800;padding:8px 18px;border-radius:10px;border:1px solid #000}
+    /* Layout */
+    .shell{display:flex;min-height:calc(100vh - 64px)}
+    .sidebar{width:260px;background:var(--blue);color:#fff;padding:26px 22px}
+    .sidebar h3{margin:0 0 18px 0;font-size:20px;font-weight:800}
+    .navlink{display:block;color:#fff;text-decoration:none;margin:14px 0;font-size:18px;font-weight:700}
+    .navlink.active{color:#ffa51f}
+    .main{flex:1;background:var(--light);padding:34px}
+    .title{font-size:32px;font-weight:800;margin:4px 0 18px 0;text-align:center}
+    /* Forms & Buttons */
+    label{display:block;font-weight:800;font-size:18px;margin:10px 0 6px}
+    input,select{width:100%;padding:12px;border:1px solid #000;border-radius:10px;background:#fff;font-size:16px}
+    .row{max-width:900px;margin:0 auto}
+    .btn{display:inline-block;border:1.5px solid #000;border-radius:10px;font-weight:800;padding:12px 22px;cursor:pointer;text-decoration:none;text-align:center}
+    .btn-blue{background:#0f4fb4;color:#fff}
+    .btn-yellow{background:#ffa51f;color:#fff}
+    .btn-red{background:#ff2828;color:#fff}
+    .btn-green{background:#00bf63;color:#fff}
+    .btn-outline{background:#fff;color:#000}
+    .actions{display:flex;gap:10px;align-items:center}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+    .card{background:#fff;border:1px solid #000;border-radius:12px;padding:16px}
+    .card h4{margin:0 0 10px 0}
+    /* Table */
+    .tablewrap{margin-top:14px;background:#fff;border:1px solid #000;border-radius:12px;overflow:hidden}
+    table{width:100%;border-collapse:separate;border-spacing:0;font-size:16px}
+    thead{background:#0a4aa9;color:#fff}
+    th,td{padding:12px 14px;border-bottom:1px solid #d5e6f7;border-right:1px solid #d5e6f7}
+    th:last-child,td:last-child{border-right:none}
+    .pill{display:inline-block;padding:6px 10px;border:1px solid #000;border-radius:999px;background:#fff}
+    .kpi{display:flex;align-items:center;gap:10px;font-weight:800}
+    .kpi .big{font-size:28px}
+    .filters{display:flex;gap:10px;align-items:center;margin:0 0 10px 0}
+    .filters .grow{flex:1}
+    .note{font-size:14px;opacity:.8}
+  </style>
+</head>
+<body>
+  <!-- TOP BAR -->
+  <div class="topbar">
+    <div class="brand">VOLUNTEER MANAGEMENT SYSTEM</div>
+    <div class="account">
+      <div class="who">
+        <span class="name">{{ uname }}</span>
+        <small>{{ urole }}</small>
+      </div>
+      <a href="{{ url_for('boundary.logout') }}" class="logout">LOGOUT</a>
+    </div>
+  </div>
 
-{% if view == 'dashboard' %}
-<div class="container">
-  <div class="row justify-content-center">
-    <div class="col-md-10">
-      <div class="card mb-3">
-        <div class="card-body">
-          <h3 class="card-title">Platform Manager</h3>
-          <form method="get" class="row g-2 mb-3">
-            <div class="col-md-9"><input name="q" class="form-control" placeholder="Search categories" value="{{ q }}"></div>
-            <div class="col-md-3"><button class="btn btn-outline-secondary">Search</button></div>
+  <div class="shell">
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+      <h3>Platform Management</h3>
+      <a class="navlink {% if view == 'dashboard' %}active{% endif %}" href="{{ url_for('boundary.pm_dashboard') }}">Categories</a>
+      <a class="navlink {% if view == 'reports' %}active{% endif %}" href="{{ url_for('boundary.pm_reports') }}">Reports</a>
+    </aside>
+
+    <!-- MAIN -->
+    <main class="main">
+      {% if view == 'dashboard' %}
+        <h1 class="title">MANAGE CATEGORIES</h1>
+
+        <div class="row card">
+          <form class="filters" method="get" action="{{ url_for('boundary.pm_dashboard') }}">
+            <div class="grow"><input type="text" name="q" value="{{ q }}" placeholder="Search categories"/></div>
+            <button class="btn btn-blue" type="submit">Search</button>
           </form>
 
-          <form method="post" action="{{ url_for('boundary.pm_create_cat') }}" class="row g-2 mb-3">
-            <div class="col-md-9"><input name="name" class="form-control" placeholder="New category"></div>
-            <div class="col-md-3"><button class="btn btn-success">Create</button></div>
+          <form method="post" action="{{ url_for('boundary.pm_create_cat') }}" style="margin-top:8px">
+            <label>New Category</label>
+            <div class="actions">
+              <input type="text" name="name" placeholder="e.g. Medical Escort" required/>
+              <button class="btn btn-green" type="submit">Create</button>
+            </div>
           </form>
+        </div>
 
-          <div class="table-responsive">
-            <table class="table table-striped">
-              <thead><tr><th>ID</th><th>Name</th><th>Actions</th></tr></thead>
-              <tbody>
+        <div class="row tablewrap" style="margin-top:16px">
+          <table>
+            <thead>
+              <tr><th style="width:80px">ID</th><th>Name</th><th style="width:240px">Actions</th></tr>
+            </thead>
+            <tbody>
               {% for c in categories %}
-                <tr>
-                  <td>{{ c.id }}</td>
-                  <td>{{ c.name }}</td>
-                  <td>
-                    <form method="post" action="{{ url_for('boundary.pm_update_cat', cat_id=c.id) }}" class="d-inline-block me-1">
-                      <input name="name" value="{{ c.name }}" class="form-control form-control-sm d-inline-block inline-input-200">
-                      <button class="btn btn-sm btn-primary">Update</button>
-                    </form>
-                    <form method="post" action="{{ url_for('boundary.pm_delete_cat', cat_id=c.id) }}" class="d-inline-block">
-                      <button class="btn btn-sm btn-danger">Delete</button>
-                    </form>
-                  </td>
-                </tr>
+              <tr>
+                <td>{{ c.id }}</td>
+                <td>
+                  <form method="post" action="{{ url_for('boundary.pm_update_cat', cat_id=c.id) }}" class="actions" style="gap:8px">
+                    <input type="text" name="name" value="{{ c.name }}" required/>
+                    <button class="btn btn-yellow" type="submit">Update</button>
+                  </form>
+                </td>
+                <td>
+                  <form method="post" action="{{ url_for('boundary.pm_delete_cat', cat_id=c.id) }}" onsubmit="return confirm('Delete category {{ c.name }}?');">
+                    <button class="btn btn-red" type="submit">Delete</button>
+                  </form>
+                </td>
+              </tr>
               {% endfor %}
-              </tbody>
-            </table>
+              {% if categories|length == 0 %}
+              <tr><td colspan="3">No categories found.</td></tr>
+              {% endif %}
+            </tbody>
+          </table>
+        </div>
+
+      {% elif view == 'reports' %}
+        <h1 class="title">PLATFORM REPORTS</h1>
+
+        <!-- Scope selector -->
+        <div class="row card">
+          <form class="filters" method="get" action="{{ url_for('boundary.pm_reports') }}">
+            <label>Report Scope</label>
+            <div class="actions">
+              <select name="scope">
+                <option value="daily" {{ 'selected' if scope=='daily' else '' }}>Daily</option>
+                <option value="weekly" {{ 'selected' if scope=='weekly' else '' }}>Weekly</option>
+                <option value="monthly" {{ 'selected' if scope=='monthly' else '' }}>Monthly</option>
+              </select>
+              <button class="btn btn-blue" type="submit">Generate</button>
+              <span class="pill">Current: {{ scope|capitalize }}</span>
+            </div>
+            <div class="note">Counts are grouped by the selected bucket (day/week/month). Data comes from Requests and Service History. </div>
+          </form>
+        </div>
+
+        <!-- KPIs -->
+        {% set total_reqs = (data.requests | sum(attribute=1)) if data and data.requests else 0 %}
+        {% set total_done = (data.completed | sum(attribute=1)) if data and data.completed else 0 %}
+        <div class="row grid" style="margin-top:16px">
+          <div class="card">
+            <div class="kpi"><span class="big">{{ total_reqs }}</span> <span>Requests Created</span></div>
+            <div class="note">Total number of requests created in the selected scope.</div>
+          </div>
+          <div class="card">
+            <div class="kpi"><span class="big">{{ total_done }}</span> <span>Services Completed</span></div>
+            <div class="note">Total completed services (from Service History) in the selected scope.</div>
+          </div>
+        </div>
+
+        <!-- Tables -->
+        <div class="row grid" style="margin-top:16px">
+          <div class="card">
+            <h4>Requests Created ({{ scope }})</h4>
+            <div class="tablewrap">
+              <table>
+                <thead><tr><th>Bucket</th><th style="width:140px">Count</th></tr></thead>
+                <tbody>
+                  {% for b, cnt in (data.requests or []) %}
+                  <tr><td>{{ b }}</td><td>{{ cnt }}</td></tr>
+                  {% endfor %}
+                  {% if not data or not data.requests %}
+                  <tr><td colspan="2">No data.</td></tr>
+                  {% endif %}
+                </tbody>
+              </table>
+            </div>
           </div>
 
-          <a class="btn btn-link" href="{{ url_for('boundary.pm_reports') }}">Reports</a>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-{% endif %}
-
-{% if view == 'reports' %}
-<div class="container">
-  <div class="row justify-content-center">
-    <div class="col-md-10">
-      <div class="card">
-        <div class="card-body">
-          <h3>Reports ({{ scope }})</h3>
-          <ul class="nav nav-tabs mb-3">
-            <li class="nav-item"><a class="nav-link" href="{{ url_for('boundary.pm_reports', scope='daily') }}">Daily</a></li>
-            <li class="nav-item"><a class="nav-link" href="{{ url_for('boundary.pm_reports', scope='weekly') }}">Weekly</a></li>
-            <li class="nav-item"><a class="nav-link" href="{{ url_for('boundary.pm_reports', scope='monthly') }}">Monthly</a></li>
-          </ul>
-          <div class="row">
-            <div class="col-md-6">
-              <h5>Requests created</h5>
-              <ul>{% for d, c in data['requests'] %}<li>{{ d }} — {{ c }}</li>{% else %}<li>No data</li>{% endfor %}</ul>
-            </div>
-            <div class="col-md-6">
-              <h5>Services completed</h5>
-              <ul>{% for d, c in data['completed'] %}<li>{{ d }} — {{ c }}</li>{% else %}<li>No data</li>{% endfor %}</ul>
+          <div class="card">
+            <h4>Services Completed ({{ scope }})</h4>
+            <div class="tablewrap">
+              <table>
+                <thead><tr><th>Bucket</th><th style="width:140px">Count</th></tr></thead>
+                <tbody>
+                  {% for b, cnt in (data.completed or []) %}
+                  <tr><td>{{ b }}</td><td>{{ cnt }}</td></tr>
+                  {% endfor %}
+                  {% if not data or not data.completed %}
+                  <tr><td colspan="2">No data.</td></tr>
+                  {% endif %}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
-      </div>
-    </div>
-  </div>
-</div>
-{% endif %}
 
-{% endblock %}
+        <!-- Simple narrative summary -->
+        <div class="row card" style="margin-top:16px">
+          <h4>Summary</h4>
+          <p>
+            In the selected <strong>{{ scope }}</strong> view, the platform received
+            <strong>{{ total_reqs }}</strong> request{{ '' if total_reqs==1 else 's' }} and completed
+            <strong>{{ total_done }}</strong> service{{ '' if total_done==1 else 's' }}.
+          </p>
+          <p class="note">Tip: switch scope to Weekly or Monthly to see trends smooth out.</p>
+        </div>
+
+      {% endif %}
+
+      <!-- Flash -->
+      {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        <div id="flash" style="display:none">{{ messages|join(' • ') }}</div>
+        <script>const f=document.getElementById('flash');if(f&&f.textContent.trim())alert(f.textContent.trim());</script>
+      {% endif %}
+      {% endwith %}
+    </main>
+  </div>
+</body>
+</html>

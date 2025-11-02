@@ -110,7 +110,7 @@
     <aside class="sidebar">
       <h3>User Management</h3>
       <a class="navlink {% if view == 'create' %}active{% endif %}" href="{{ url_for('boundary.admin_new_user') }}">Create User</a>
-      <a class="navlink {% if view == 'users' or view == 'edit' %}active{% endif %}" href="{{ url_for('boundary.admin_users', type='accounts') }}">Update User</a>
+      <a class="navlink {% if view in ['users','edit','edit_profile'] %}active{% endif %}" href="{{ url_for('boundary.admin_users', type='accounts') }}">Update User</a>
     </aside>
 
     <!-- MAIN -->
@@ -120,7 +120,7 @@
         <div class="row">
           <form method="post" action="{{ url_for('boundary.admin_create_user') }}">
             <label>User</label>
-            <select name="user_type">
+            <select name="user_type" required>
               <option value="" disabled selected>Select user type</option>
               <option value="account">User Account</option>
               <option value="profile">User Profile</option>
@@ -136,19 +136,22 @@
             </select>
 
             <label>Full Name</label>
-            <input type="text" name="full_name" placeholder="Enter your full name"/>
+            <input type="text" name="full_name" placeholder="Enter full name" required/>
+
+            <label>Email</label>
+            <input type="email" name="email" placeholder="Enter email" required/>
 
             <label>Contact Number</label>
-            <input type="text" name="phone" placeholder="+65"/>
+            <input type="text" name="phone" placeholder="+65" required/>
 
             <label>Username</label>
-            <input type="text" name="username" placeholder="Enter your username" required/>
+            <input type="text" name="username" placeholder="Enter username"/>
 
             <label>Password</label>
-            <input type="password" name="password" placeholder="Enter your password" required/>
+            <input type="password" name="password" placeholder="Enter password"/>
 
             <div class="actions-col">
-              <button class="btn btn-yellow btn-block" type="submit">Create Account</button>
+              <button class="btn btn-yellow btn-block" type="submit">Create</button>
             </div>
           </form>
         </div>
@@ -174,12 +177,19 @@
         <div class="tablewrap">
           <table>
             <thead>
+              {% if type == 'accounts' %}
               <tr>
                 <th>ID</th><th>Username</th><th>Role</th><th>Status</th><th class="actions">Actions</th>
               </tr>
+              {% else %}
+              <tr>
+                <th>ID</th><th>Full Name</th><th>Email</th><th>Phone</th><th>Status</th><th class="actions">Actions</th>
+              </tr>
+              {% endif %}
             </thead>
             <tbody>
               {% for u in users %}
+              {% if type == 'accounts' %}
               <tr>
                 <td>{{ u.id }}</td>
                 <td>{{ u.username }}</td>
@@ -187,6 +197,16 @@
                 <td>{% if u.is_active %}<span class="status-active">Active</span>{% else %}<span class="status-suspended">Suspended</span>{% endif %}</td>
                 <td class="actions"><a class="edit-btn" href="{{ url_for('boundary.admin_edit_user', user_id=u.id) }}">Edit</a></td>
               </tr>
+              {% else %}
+              <tr>
+                <td>{{ u.id }}</td>
+                <td>{{ u.full_name }}</td>
+                <td>{{ u.email }}</td>
+                <td>{{ u.phone }}</td>
+                <td>{% if u.is_active %}<span class="status-active">Active</span>{% else %}<span class="status-suspended">Suspended</span>{% endif %}</td>
+                <td class="actions"><a class="edit-btn" href="{{ url_for('boundary.admin_edit_profile', profile_id=u.id) }}">Edit</a></td>
+              </tr>
+              {% endif %}
               {% endfor %}
             </tbody>
           </table>
@@ -215,17 +235,17 @@
               <option value="Platform Manager" {{ 'selected' if user.role=='Platform Manager' else '' }}>Platform Manager</option>
             </select>
 
-            <label>Full Name</label>
-            <input type="text" name="full_name" value="{{ user.profile.full_name if user.profile else '' }}" placeholder="Enter your full name"/>
-
-            <label>Contact Number</label>
-            <input type="text" name="phone" value="{{ user.profile.phone if user.profile else '' }}" placeholder="+65"/>
-
             <label>Username</label>
-            <input type="text" name="username" value="{{ user.username }}" placeholder="Enter your username" required/>
+            <input type="text" name="username" value="{{ user.username }}" placeholder="Enter username" required/>
 
-            <label>Password</label>
-            <input type="password" name="password" placeholder="Enter your password (leave blank to keep current)"/>
+            <label>New Password</label>
+            <input type="password" name="password" placeholder="Leave blank to keep current"/>
+
+            <label>Status</label>
+            <select name="active">
+              <option value="True" {{ 'selected' if user.is_active else '' }}>Active</option>
+              <option value="False" {{ 'selected' if not user.is_active else '' }}>Suspended</option>
+            </select>
 
             <!-- Submit button (inside form) -->
             <div class="update-buttons">
@@ -251,6 +271,54 @@
 
             <div class="actions-col" style="margin-top:14px">
               <a class="btn btn-blue btn-block" href="{{ url_for('boundary.admin_users', type='accounts') }}">Back</a>
+            </div>
+          </div>
+        </div>
+
+      {% elif view == 'edit_profile' %}
+        <h1 class="title">UPDATE USER PROFILE</h1>
+        <div class="row">
+          <!-- Update Profile form -->
+          <form method="post" action="{{ url_for('boundary.admin_update_profile', profile_id=profile.id) }}">
+            <label>Full Name</label>
+            <input type="text" name="full_name" value="{{ profile.full_name }}" placeholder="Enter full name" required/>
+
+            <label>Email</label>
+            <input type="email" name="email" value="{{ profile.email }}" placeholder="Enter email" required/>
+
+            <label>Contact Number</label>
+            <input type="text" name="phone" value="{{ profile.phone }}" placeholder="+65" required/>
+
+            <label>Status</label>
+            <select name="active">
+              <option value="True" {{ 'selected' if profile.is_active else '' }}>Active</option>
+              <option value="False" {{ 'selected' if not profile.is_active else '' }}>Suspended</option>
+            </select>
+
+            <!-- Submit inside the form -->
+            <div class="update-buttons">
+              <div class="actions-col">
+                <button class="btn btn-yellow btn-block" type="submit">Submit</button>
+              </div>
+            </div>
+          </form>
+
+          <!-- Suspend / Activate + Back (separate forms) -->
+          <div class="update-buttons">
+            <div class="actions-col" style="margin-top:14px">
+              {% if profile.is_active %}
+                <form method="post" action="{{ url_for('boundary.admin_suspend_profile', profile_id=profile.id) }}">
+                  <button class="btn btn-red btn-block" type="submit">Suspend Profile</button>
+                </form>
+              {% else %}
+                <form method="post" action="{{ url_for('boundary.admin_activate_profile', profile_id=profile.id) }}">
+                  <button class="btn btn-green btn-block" type="submit">Activate Profile</button>
+                </form>
+              {% endif %}
+            </div>
+
+            <div class="actions-col" style="margin-top:14px">
+              <a class="btn btn-blue btn-block" href="{{ url_for('boundary.admin_users', type='profiles') }}">Back</a>
             </div>
           </div>
         </div>

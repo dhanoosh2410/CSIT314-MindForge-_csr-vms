@@ -47,12 +47,14 @@ def logout():
     AuthController.logout()
     return render_template('auth.html', page='logout', username=username, body_class='bg login')
 
+
 # ---------- User Admin ----------
 @boundary_bp.route('/admin')
 def admin_dashboard():
     AuthController.require_role('User Admin')
     # keep a simple redirect to the list
     return redirect(url_for('boundary.admin_users'))
+
 
 @boundary_bp.route('/admin/users')
 def admin_users():
@@ -76,14 +78,29 @@ def admin_users():
         body_class='bg'
     )
 
+
 @boundary_bp.route('/admin/users/new', methods=['GET'])
 def admin_new_user():
     AuthController.require_role('User Admin')
     return render_template('user_admin.html', view='create', body_class='bg create')
 
+
 @boundary_bp.route('/admin/users/create', methods=['POST'])
 def admin_create_user():
     AuthController.require_role('User Admin')
+    user_type = (request.form.get('user_type') or '').lower()
+    if user_type == 'profile':
+        # Create a standalone profile
+        ok, msg = UserAdminController.create_profile(
+            full_name=request.form.get('full_name'),
+            email=request.form.get('email'),
+            phone=request.form.get('phone'),
+            active=True,
+        )
+        flash(msg)
+        # After creating a profile, return to the profiles list
+        return redirect(url_for('boundary.admin_users', type='profiles'))
+    # otherwise create a user account
     ok, msg = UserAdminController.create_user_with_profile(
         role=request.form.get('role'),
         username=request.form.get('username'),
@@ -94,7 +111,9 @@ def admin_create_user():
         phone=request.form.get('phone'),
     )
     flash(msg)
-    return redirect(url_for('boundary.admin_users', type='profiles'))
+    # return to accounts list
+    return redirect(url_for('boundary.admin_users', type='accounts'))
+
 
 @boundary_bp.route('/admin/users/<int:user_id>/edit', methods=['GET'])
 def admin_edit_user(user_id):
@@ -105,6 +124,7 @@ def admin_edit_user(user_id):
         flash('User not found.')
         return redirect(url_for('boundary.admin_users'))
     return render_template('user_admin.html', view='edit', user=user, body_class='bg create')
+
 
 @boundary_bp.route('/admin/users/<int:user_id>/update', methods=['POST'])
 def admin_update_user(user_id):
@@ -123,6 +143,7 @@ def admin_update_user(user_id):
     flash(msg)
     return redirect(url_for('boundary.admin_users'))
 
+
 @boundary_bp.route('/admin/users/<int:user_id>/suspend', methods=['POST'])
 def admin_suspend_user(user_id):
     AuthController.require_role('User Admin')
@@ -130,12 +151,61 @@ def admin_suspend_user(user_id):
     flash('User suspended.')
     return redirect(url_for('boundary.admin_users'))
 
+
 @boundary_bp.route('/admin/users/<int:user_id>/activate', methods=['POST'])
 def admin_activate_user(user_id):
     AuthController.require_role('User Admin')
     UserAdminController.activate_user(user_id)
     flash('User activated.')
     return redirect(url_for('boundary.admin_users'))
+
+
+# ---------- Profile management (User Admin) ----------
+@boundary_bp.route('/admin/profiles/<int:profile_id>/edit')
+def admin_edit_profile(profile_id):
+    AuthController.require_role('User Admin')
+    from ..entity.models import UserProfile
+    profile = UserProfile.query.get(profile_id)
+    if not profile:
+        flash('Profile not found.')
+        return redirect(url_for('boundary.admin_users', type='profiles'))
+    return render_template(
+        'user_admin.html',
+        view='edit_profile',
+        profile=profile,
+        body_class='bg create'
+    )
+
+
+@boundary_bp.route('/admin/profiles/<int:profile_id>/update', methods=['POST'])
+def admin_update_profile(profile_id):
+    AuthController.require_role('User Admin')
+    ok, msg = UserAdminController.update_profile(
+        profile_id=profile_id,
+        full_name=request.form.get('full_name'),
+        email=request.form.get('email'),
+        phone=request.form.get('phone'),
+        active=request.form.get('active'),
+    )
+    flash(msg)
+    return redirect(url_for('boundary.admin_users', type='profiles'))
+
+
+@boundary_bp.route('/admin/profiles/<int:profile_id>/suspend', methods=['POST'])
+def admin_suspend_profile(profile_id):
+    AuthController.require_role('User Admin')
+    UserAdminController.suspend_profile(profile_id)
+    flash('Profile suspended.')
+    return redirect(url_for('boundary.admin_users', type='profiles'))
+
+
+@boundary_bp.route('/admin/profiles/<int:profile_id>/activate', methods=['POST'])
+def admin_activate_profile(profile_id):
+    AuthController.require_role('User Admin')
+    UserAdminController.activate_profile(profile_id)
+    flash('Profile activated.')
+    return redirect(url_for('boundary.admin_users', type='profiles'))
+
 
 # ---------- CSR ----------
 @boundary_bp.route('/csr')
@@ -169,12 +239,14 @@ def csr_dashboard():
         history_preview=(history_items or [])[:5]
     )
 
+
 @boundary_bp.route('/csr/request/<int:req_id>/save', methods=['POST'])
 def csr_save(req_id):
     AuthController.require_role('CSR Representative')
     CSRController.save_request(req_id)
     flash('Saved to shortlist.')
     return redirect(url_for('boundary.csr_dashboard'))
+
 
 @boundary_bp.route('/csr/request/<int:req_id>/unsave', methods=['POST'])
 def csr_unsave(req_id):
@@ -185,6 +257,7 @@ def csr_unsave(req_id):
     else:
         flash('Not in shortlist.')
     return redirect(url_for('boundary.csr_dashboard'))
+
 
 @boundary_bp.route('/csr/history')
 def csr_history():
@@ -211,6 +284,7 @@ def csr_history():
         end=end,
     )
 
+
 @boundary_bp.route('/csr/request/<int:req_id>')
 def csr_request(req_id):
     AuthController.require_role('CSR Representative')
@@ -222,6 +296,7 @@ def csr_request(req_id):
     saved = CSRController.is_saved_by(req_id)
     return render_template('csr_rep.html', view='detail', request_item=r, categories=categories, saved=saved)
 
+
 @boundary_bp.route('/csr/shortlist')
 def csr_shortlist():
     AuthController.require_role('CSR Representative')
@@ -231,6 +306,7 @@ def csr_shortlist():
     full_shortlist = CSRController.get_shortlist()
     saved_ids = {s.request_id for s in (full_shortlist or [])}
     return render_template('csr_rep.html', view='shortlist', categories=categories, shortlist=shortlist, saved_ids=saved_ids, shortlist_q=sq)
+
 
 # ---------- PIN ----------
 @boundary_bp.route('/pin')
@@ -245,11 +321,13 @@ def pin_dashboard():
     history_preview = PINController.history() or []
     return render_template('pin.html', view='dashboard', categories=categories, reqs=reqs, q=q, page=pag['page'], per_page=pag['per_page'], total=pag['total'], pages=pag['pages'], history_preview=(history_preview or [])[:5])
 
+
 @boundary_bp.route('/pin/request/new', methods=['GET'])
 def pin_new_req():
     AuthController.require_role('Person in Need')
     categories = PINController.get_categories()
     return render_template('pin.html', view='create', categories=categories)
+
 
 # PIN: CRUD for requests
 @boundary_bp.route('/pin/request/create', methods=['POST'])
@@ -262,6 +340,7 @@ def pin_create_req():
     )
     flash(msg)
     return redirect(url_for('boundary.pin_dashboard'))
+
 
 @boundary_bp.route('/pin/request/<int:req_id>/update', methods=['POST'])
 def pin_update_req(req_id):
@@ -300,6 +379,7 @@ def pin_update_req(req_id):
     )
     return render_template('pin.html', view='edit', req=req_obj, categories=categories, next=next_url, page=request.form.get('page', 1), per_page=request.form.get('per_page', 12), q=request.form.get('q',''))
 
+
 @boundary_bp.route('/pin/request/<int:req_id>/edit', methods=['GET'])
 def pin_edit_req(req_id):
     AuthController.require_role('Person in Need')
@@ -315,6 +395,7 @@ def pin_edit_req(req_id):
     next_url = request.args.get('next') or url_for('boundary.pin_dashboard', page=page, per_page=per_page, q=q)
     return render_template('pin.html', view='edit', req=r, categories=categories, next=next_url, page=page, per_page=per_page, q=q)
 
+
 @boundary_bp.route('/pin/request/<int:req_id>/delete', methods=['POST'])
 def pin_delete_req(req_id):
     AuthController.require_role('Person in Need')
@@ -327,6 +408,7 @@ def pin_delete_req(req_id):
         flash('Request not found or permission denied.')
     return redirect(next_url)
 
+
 @boundary_bp.route('/pin/history')
 def pin_history():
     AuthController.require_role('Person in Need')
@@ -338,6 +420,7 @@ def pin_history():
     items = PINController.history(category_id=category_id, start=start, end=end, q=q)
     return render_template('pin.html', view='history', categories=categories, items=items, category_id=category_id, start=start, end=end, q=q)
 
+
 # ---------- Platform Manager ----------
 @boundary_bp.route('/pm')
 def pm_dashboard():
@@ -346,12 +429,14 @@ def pm_dashboard():
     categories = PMController.search_categories(q)
     return render_template('pm.html', view='dashboard', categories=categories, q=q)
 
+
 @boundary_bp.route('/pm/category/create', methods=['POST'])
 def pm_create_cat():
     AuthController.require_role('Platform Manager')
     PMController.create_category(request.form.get('name'))
     flash('Category created.')
     return redirect(url_for('boundary.pm_dashboard'))
+
 
 @boundary_bp.route('/pm/category/<int:cat_id>/update', methods=['POST'])
 def pm_update_cat(cat_id):
@@ -360,12 +445,14 @@ def pm_update_cat(cat_id):
     flash('Category updated.')
     return redirect(url_for('boundary.pm_dashboard'))
 
+
 @boundary_bp.route('/pm/category/<int:cat_id>/delete', methods=['POST'])
 def pm_delete_cat(cat_id):
     AuthController.require_role('Platform Manager')
     PMController.delete_category(cat_id)
     flash('Category deleted.')
     return redirect(url_for('boundary.pm_dashboard'))
+
 
 @boundary_bp.route('/pm/reports')
 def pm_reports():

@@ -4,6 +4,7 @@ from datetime import datetime
 from sqlalchemy import or_, text
 from sqlalchemy.sql import func  # <-- added for PM reports
 import hashlib, random
+import random
 
 db = SQLAlchemy()
 
@@ -125,6 +126,57 @@ class UserProfile(db.Model):
     full_name = db.Column(db.String(120))
     email = db.Column(db.String(120))
     phone = db.Column(db.String(30))
+
+    # NEW: allow suspending/activating profiles, as per user stories
+    is_active = db.Column(db.Boolean, default=True)
+
+    @classmethod
+    def create_profile(cls, full_name: str, email: str, phone: str, active: bool = True):
+        """
+        Create a standalone profile (name/email/phone/active flag).
+        """
+        p = cls(
+            full_name=(full_name or '').strip(),
+            email=(email or '').strip(),
+            phone=(phone or '').strip(),
+            is_active=bool(active),
+        )
+        db.session.add(p)
+        db.session.commit()
+        return True, "Profile created."
+
+    @classmethod
+    def update_profile(cls, profile_id: int, full_name: str, email: str, phone: str, active=None):
+        """
+        Update profile fields. If `active` is provided, toggles profile status.
+        """
+        p = cls.query.get(profile_id)
+        if not p:
+            return False, "Profile not found."
+        p.full_name = (full_name or '').strip()
+        p.email = (email or '').strip()
+        p.phone = (phone or '').strip()
+        if active is not None:
+            if isinstance(active, str):
+                p.is_active = active.lower() in ('on', 'true', '1')
+            else:
+                p.is_active = bool(active)
+        db.session.commit()
+        return True, "Profile updated."
+
+    @classmethod
+    def suspend_profile(cls, profile_id: int) -> None:
+        p = cls.query.get(profile_id)
+        if p:
+            p.is_active = False
+            db.session.commit()
+
+    @classmethod
+    def activate_profile(cls, profile_id: int) -> None:
+        p = cls.query.get(profile_id)
+        if p:
+            p.is_active = True
+            db.session.commit()
 
     @classmethod
     def search_profiles(cls, q: str = "", page: int = 1, per_page: int = 20):
@@ -542,36 +594,43 @@ def seed_database():
     db.session.commit()
 
     # Exactly 100 standalone demo profiles (no user_id)
-    demo_profiles = [
-        UserProfile(full_name=f'Demo Profile {i}', email=f'demo{i}@example.com', phone=f'9000{i:04d}')
-        for i in range(1, 101)
+    if UserProfile.query.count() > 0:
+        print("Profiles already exist, skipping seeding.")
+        return
+
+    first_names = [
+        "Aiden","Benjamin","Chloe","Daniel","Evelyn","Farhan","Grace","Hannah","Isaac","Janet",
+        "Kevin","Lydia","Marcus","Nicole","Owen","Priya","Qistina","Rachel","Samuel","Tanvi",
+        "Umar","Vanessa","William","Xin Yi","Yusuf","Aaron","Bella","Clarence","Daphne","Elias",
+        "Fiona","Gavin","Hazel","Ian","Jia Hao","Kelly","Leon","Melissa","Nathan","Olivia",
+        "Patrick","Qi Hui","Ryan","Sophia","Travis","Umairah","Vera","Winston","Xue Ying","Zara"
     ]
-    db.session.add_all(demo_profiles)
+    last_names = ["Tan","Lee","Lim","Goh","Ong","Teo","Chong","Koh"]
+
+    used_names = set()
+    profiles = []
+    idx = 0
+
+    while len(profiles) < 100:
+        fn = random.choice(first_names)
+        ln = random.choice(last_names)
+        full = f"{fn} {ln}"
+        if full in used_names:
+            continue
+        used_names.add(full)
+
+        slug_fn = fn.lower().replace(" ", "")
+        slug_ln = ln.lower().replace(" ", "")
+        email = f"{slug_fn}.{slug_ln}{len(profiles)+1:02d}@example.com"
+        phone = f"9{1230000 + (len(profiles)+1):07d}"
+        profiles.append(UserProfile(full_name=full, email=email, phone=phone, is_active=True))
+        idx += 1
+
+    db.session.add_all(profiles)
     db.session.commit()
+    print(f"Seeded {len(profiles)} unique user profiles.")
 
-    # Optional demo requests (PIN-less OK)
-    if not Request.query.first():
-        cats = Category.query.all()
-        for i in range(40):
-            cat = random.choice(cats)
-            r = Request(pin_id=None,
-                        title=f'{cat.name} help #{i+1}',
-                        description='Auto-seeded request',
-                        category_id=cat.id,
-                        status='open')
-            db.session.add(r)
-        db.session.commit()
-
-    # --------------------------------------------------------------------------
     # Additional seeding: create sample requests for the Person in Need user.
-    # We only seed these demo rows if the designated PIN user exists and has no
-    # requests yet.  This allows the UI to be populated with realistic data for
-    # testing without duplicating rows on each app startup.  To override this
-    # behaviour or customise the number of open/completed rows, call
-    # `seed_pin_samples()` manually in an app context.
-    # Determine if the Person-in-Need user has any existing requests.  We refer
-    # to the User class defined above rather than importing from this module,
-    # which would create a circular import.
     pin_user = User.query.filter_by(username='pin_user1', role='Person in Need').first()
     if pin_user and not Request.query.filter_by(pin_id=pin_user.id).first():
         try:
@@ -604,6 +663,9 @@ def seed_pin_samples(pin_username: str = 'pin_user1', n_open: int = 60, n_comple
     cats = Category.query.all()
     if not cats:
         raise RuntimeError("No categories found. Run seed_database() first.")
+
+    # Attach a CSR for history rows where possible (CSR history pages need data)
+    csr_user = User.query.filter_by(role='CSR Representative').first()
 
     # Helper to create random timestamps within the last 180 days
     now = datetime.utcnow()
@@ -649,7 +711,7 @@ def seed_pin_samples(pin_username: str = 'pin_user1', n_open: int = 60, n_comple
         db.session.add(req)
         db.session.flush()  # ensure req.id exists
         hist = ServiceHistory(
-            csr_id=None,
+            csr_id=(csr_user.id if csr_user else None),  # <-- assign a real CSR if available
             pin_id=pin.id,
             request_id=req.id,
             category_id=cat.id,

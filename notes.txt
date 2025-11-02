@@ -42,11 +42,3 @@ CSR_VMS_FLASK_BCE/
 └─ requirements.txt
 
 
-Notes for each module:
-
-User admin:
- 1) user accounts(ID,Role,Username,Password) : CRUDS [Used for logging in to respective role]
- 2) user profiles() : CRUDS [Used for ?]
-
-How 4 user accounts and 100 user profiles can be implemented?
-Ans: Link accounts along with profiles; therefore, profile fields differ for each role
