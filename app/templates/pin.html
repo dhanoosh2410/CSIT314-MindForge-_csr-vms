@@ -326,6 +326,7 @@
                   <th>Title</th>
                   <th>Category</th>
                   <th>Status</th>
+                  <th>Accepted By</th>
                   <th>Views</th>
                   <th>Shortlisted</th>
                   <th>Actions</th>
@@ -338,6 +339,15 @@
                   <td>{{ r.title }}</td>
                   <td>{{ r.category.name if r.category else '-' }}</td>
                   <td>{{ r.status }}</td>
+                  <td>
+                    {% if r.accepted_csr and (r.accepted_csr.first_name or r.accepted_csr.last_name) %}
+                      {{ r.accepted_csr.first_name }} {{ r.accepted_csr.last_name }}
+                    {% elif r.accepted_csr %}
+                      {{ r.accepted_csr.username }}
+                    {% else %}
+                      -
+                    {% endif %}
+                  </td>
                   <td>{{ r.views_count or 0 }}</td>
                   <td>{{ r.shortlist_count or 0 }}</td>
                   <td>
@@ -381,6 +391,21 @@
       {# EDIT REQUEST #}
       {% elif view == 'edit' %}
         <h1>Update Request</h1>
+        {% if req.accepted_csr %}
+          <div style="margin-bottom:12px; padding:10px; border:1px solid #e1e7ef; border-radius:6px; background:#fff;">
+            <strong>Accepted by:</strong>
+            {% if req.accepted_csr.first_name or req.accepted_csr.last_name %}
+              {{ req.accepted_csr.first_name }} {{ req.accepted_csr.last_name }}
+            {% else %}
+              {{ req.accepted_csr.username }}
+            {% endif %}
+            {% if req.accepted_at %}
+              <span style="color:#666; font-size:0.9rem;"> — {{ req.accepted_at.date() }}</span>
+            {% endif %}
+          </div>
+        {% else %}
+          <div style="margin-bottom:12px; color:#666;">No volunteer has accepted this request yet.</div>
+        {% endif %}
         <form method="post" action="{{ url_for('boundary.pin_update_req', req_id=req.id) }}">
           <input type="hidden" name="next" value="{{ next or url_for('boundary.pin_dashboard', page=page, per_page=per_page, q=q) }}" />
           <input type="hidden" name="page" value="{{ page }}" />
@@ -462,8 +487,8 @@
                   <td>{{ h.date_completed.date() }}</td>
                   <td>{{ h.request.title if h.request else '-' }}</td>
                   <td>{{ h.category.name if h.category else '-' }}</td>
-                  <td>{{ h.csr.profile.full_name if h.csr and h.csr.profile else (h.csr.username if h.csr else '-') }}</td>
-                  <td>{{ h.csr.profile.email if h.csr and h.csr.profile else (h.csr.username if h.csr else '-') }}</td>
+                  <td>{{ (h.csr.first_name ~ ' ' ~ h.csr.last_name) if h.csr and (h.csr.first_name or h.csr.last_name) else (h.csr.username if h.csr else '-') }}</td>
+                  <td>{{ h.csr.email if h.csr and h.csr.email else (h.csr.username if h.csr else '-') }}</td>
                 </tr>
                 {% endfor %}
               </tbody>

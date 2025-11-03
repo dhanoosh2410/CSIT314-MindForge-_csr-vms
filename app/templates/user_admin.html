@@ -120,41 +120,88 @@
         <div class="row">
           <form method="post" action="{{ url_for('boundary.admin_create_user') }}">
             <label>User</label>
-            <select name="user_type" required>
+            <select id="user_type" name="user_type" required>
               <option value="" disabled selected>Select user type</option>
               <option value="account">User Account</option>
               <option value="profile">User Profile</option>
             </select>
 
-            <label>Role</label>
-            <select name="role" required>
-              <option value="" disabled selected>Select Role</option>
-              <option value="User Admin">User Admin</option>
-              <option value="CSR Representative">CSR Representative</option>
-              <option value="Person in Need">Person in Need</option>
-              <option value="Platform Manager">Platform Manager</option>
-            </select>
+            <div id="role_wrap">
+              <label>Role</label>
+              <select name="role">
+                <option value="" disabled selected>Select Role</option>
+                {% if profiles %}
+                  {% for p in profiles %}
+                    <option value="{{ p.name }}">{{ p.name }}</option>
+                  {% endfor %}
+                {% else %}
+                  <option value="User Admin">User Admin</option>
+                  <option value="CSR Representative">CSR Representative</option>
+                  <option value="Person in Need">Person in Need</option>
+                  <option value="Platform Manager">Platform Manager</option>
+                {% endif %}
+              </select>
+            </div>
 
-            <label>Full Name</label>
-            <input type="text" name="full_name" placeholder="Enter full name" required/>
+            <div id="full_name_wrap">
+              <label>Full Name</label>
+              <input type="text" id="full_name" name="full_name" placeholder="Enter full name" required/>
+            </div>
 
-            <label>Email</label>
-            <input type="email" name="email" placeholder="Enter email" required/>
+            <div id="account_fields">
+              <label>Email</label>
+              <input type="email" id="email" name="email" placeholder="Enter email" />
 
-            <label>Contact Number</label>
-            <input type="text" name="phone" placeholder="+65" required/>
+              <label>Contact Number</label>
+              <input type="text" id="phone" name="phone" placeholder="+65" />
 
-            <label>Username</label>
-            <input type="text" name="username" placeholder="Enter username"/>
+              <label>Username</label>
+              <input type="text" id="username" name="username" placeholder="Enter username"/>
 
-            <label>Password</label>
-            <input type="password" name="password" placeholder="Enter password"/>
+              <label>Password</label>
+              <input type="password" id="password" name="password" placeholder="Enter password"/>
+            </div>
 
             <div class="actions-col">
               <button class="btn btn-yellow btn-block" type="submit">Create</button>
             </div>
           </form>
         </div>
+
+        <script>
+          // Toggle create form fields based on selected user type.
+          (function(){
+            const userType = document.getElementById('user_type');
+            const roleWrap = document.getElementById('role_wrap');
+            const fullName = document.getElementById('full_name');
+            const accountFields = document.getElementById('account_fields');
+            const email = document.getElementById('email');
+            const phone = document.getElementById('phone');
+            const username = document.getElementById('username');
+            const password = document.getElementById('password');
+
+            function setProfileMode(){
+              roleWrap.style.display = 'none';
+              accountFields.style.display = 'none';
+              fullName.required = true;
+              email.required = false; phone.required = false; username.required = false; password.required = false;
+            }
+
+            function setAccountMode(){
+              roleWrap.style.display = '';
+              accountFields.style.display = '';
+              fullName.required = true;
+              email.required = false; phone.required = false; username.required = false; password.required = false;
+            }
+
+            if(userType){
+              userType.addEventListener('change', function(e){
+                if(e.target.value === 'profile') setProfileMode(); else setAccountMode();
+              });
+              setAccountMode();
+            }
+          })();
+        </script>
 
       {% elif view == 'users' %}
         <h1 class="title">VIEW/UPDATE/SUSPEND/SEARCH USER</h1>
@@ -183,7 +230,7 @@
               </tr>
               {% else %}
               <tr>
-                <th>ID</th><th>Full Name</th><th>Email</th><th>Phone</th><th>Status</th><th class="actions">Actions</th>
+                <th>ID</th><th>Name</th><th>Status</th><th class="actions">Actions</th>
               </tr>
               {% endif %}
             </thead>
@@ -193,16 +240,14 @@
               <tr>
                 <td>{{ u.id }}</td>
                 <td>{{ u.username }}</td>
-                <td>{{ u.role }}</td>
+                <td>{{ u.profile.name if u.profile else '-' }}</td>
                 <td>{% if u.is_active %}<span class="status-active">Active</span>{% else %}<span class="status-suspended">Suspended</span>{% endif %}</td>
                 <td class="actions"><a class="edit-btn" href="{{ url_for('boundary.admin_edit_user', user_id=u.id) }}">Edit</a></td>
               </tr>
               {% else %}
               <tr>
                 <td>{{ u.id }}</td>
-                <td>{{ u.full_name }}</td>
-                <td>{{ u.email }}</td>
-                <td>{{ u.phone }}</td>
+                <td>{{ u.name }}</td>
                 <td>{% if u.is_active %}<span class="status-active">Active</span>{% else %}<span class="status-suspended">Suspended</span>{% endif %}</td>
                 <td class="actions"><a class="edit-btn" href="{{ url_for('boundary.admin_edit_profile', profile_id=u.id) }}">Edit</a></td>
               </tr>
@@ -229,10 +274,16 @@
           <form method="post" action="{{ url_for('boundary.admin_update_user', user_id=user.id) }}">
             <label>Role</label>
             <select name="role" required>
-              <option value="User Admin" {{ 'selected' if user.role=='User Admin' else '' }}>User Admin</option>
-              <option value="CSR Representative" {{ 'selected' if user.role=='CSR Representative' else '' }}>CSR Representative</option>
-              <option value="Person in Need" {{ 'selected' if user.role=='Person in Need' else '' }}>Person in Need</option>
-              <option value="Platform Manager" {{ 'selected' if user.role=='Platform Manager' else '' }}>Platform Manager</option>
+              {% if profiles %}
+                {% for p in profiles %}
+                  <option value="{{ p.name }}" {{ 'selected' if (user.profile and user.profile.name==p.name) else '' }}>{{ p.name }}</option>
+                {% endfor %}
+              {% else %}
+                <option value="User Admin" {{ 'selected' if (user.profile and user.profile.name=='User Admin') else '' }}>User Admin</option>
+                <option value="CSR Representative" {{ 'selected' if (user.profile and user.profile.name=='CSR Representative') else '' }}>CSR Representative</option>
+                <option value="Person in Need" {{ 'selected' if (user.profile and user.profile.name=='Person in Need') else '' }}>Person in Need</option>
+                <option value="Platform Manager" {{ 'selected' if (user.profile and user.profile.name=='Platform Manager') else '' }}>Platform Manager</option>
+              {% endif %}
             </select>
 
             <label>Username</label>
@@ -240,6 +291,15 @@
 
             <label>New Password</label>
             <input type="password" name="password" placeholder="Leave blank to keep current"/>
+
+            <label>Full Name</label>
+            <input type="text" name="full_name" value="{{ (user.first_name ~ (' ' ~ user.last_name)) if (user.first_name or user.last_name) else '' }}" placeholder="Enter full name" />
+
+            <label>Email</label>
+            <input type="email" name="email" value="{{ user.email or '' }}" placeholder="Enter email" />
+
+            <label>Contact Number</label>
+            <input type="text" name="phone" value="{{ user.phone or '' }}" placeholder="+65" />
 
             <label>Status</label>
             <select name="active">
@@ -278,17 +338,9 @@
       {% elif view == 'edit_profile' %}
         <h1 class="title">UPDATE USER PROFILE</h1>
         <div class="row">
-          <!-- Update Profile form -->
           <form method="post" action="{{ url_for('boundary.admin_update_profile', profile_id=profile.id) }}">
-            <label>Full Name</label>
-            <input type="text" name="full_name" value="{{ profile.full_name }}" placeholder="Enter full name" required/>
-
-            <label>Email</label>
-            <input type="email" name="email" value="{{ profile.email }}" placeholder="Enter email" required/>
-
-            <label>Contact Number</label>
-            <input type="text" name="phone" value="{{ profile.phone }}" placeholder="+65" required/>
-
+            <label>Name</label>
+            <input type="text" name="full_name" value="{{ profile.name }}" placeholder="Enter role name" required/>
             <label>Status</label>
             <select name="active">
               <option value="True" {{ 'selected' if profile.is_active else '' }}>Active</option>

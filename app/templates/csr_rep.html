@@ -444,8 +444,8 @@
           <p><strong>Shortlists:</strong> {{ request_item.shortlist_count }}</p>
           <p>{{ request_item.description }}</p>
           <p><strong>Owner:</strong>
-            {% if request_item.pin and request_item.pin.profile %}
-              {{ request_item.pin.profile.full_name }} <small class="text-muted">({{ request_item.pin.username }})</small>
+            {% if request_item.pin and (request_item.pin.first_name or request_item.pin.last_name) %}
+              {{ request_item.pin.first_name }} {{ request_item.pin.last_name }} <small class="text-muted">({{ request_item.pin.username }})</small>
             {% else %}
               {{ request_item.pin.username if request_item.pin else '-' }}
             {% endif %}
@@ -459,6 +459,16 @@
               <form method="post" action="{{ url_for('boundary.csr_save', req_id=request_item.id) }}">
                 <button class="btn btn-green" type="submit">Save to Shortlist</button>
               </form>
+            {% endif %}
+            {# accept button: shown to CSR reps when request is open and not already accepted #}
+            {% if request_item.status == 'open' and (request_item.accepted_csr_id is not defined or not request_item.accepted_csr_id) and session.get('user_id') != request_item.pin_id %}
+              <form method="post" action="{{ url_for('boundary.csr_accept', req_id=request_item.id) }}" style="display:inline-block; margin-left:8px;">
+                <button class="btn btn-orange" type="submit">Accept Request</button>
+              </form>
+            {% elif request_item.accepted_csr %}
+              <div style="margin-left:8px; font-weight:700;">
+                Accepted by: {{ request_item.accepted_csr.first_name }} {{ request_item.accepted_csr.last_name }}
+              </div>
             {% endif %}
             <a class="btn btn-orange" href="{{ url_for('boundary.csr_dashboard') }}">Back</a>
           </div>

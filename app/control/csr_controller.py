@@ -1,7 +1,7 @@
 
 # CONTROL: CSR Rep use cases (browse/search PIN requests, shortlist, history)
-from datetime import datetime
-from ..entity.models import Category, Request, Shortlist, ServiceHistory
+from datetime import datetime, timezone
+from ..entity.models import Category, Request, Shortlist, ServiceHistory, db
 from flask import session
 
 class CSRController:
@@ -40,6 +40,23 @@ class CSRController:
         if not csr_id:
             return False
         return Shortlist.remove_if_exists(csr_id, req_id)
+
+    @staticmethod
+    def accept_request(req_id):
+        csr_id = session.get('user_id')
+        if not csr_id:
+            return False
+        r = Request.query.get(req_id)
+        if not r or r.status != 'open':
+            return False
+        try:
+            r.accepted_csr_id = csr_id
+            r.accepted_at = datetime.now(timezone.utc)
+            db.session.commit()
+            return True
+        except Exception:
+            db.session.rollback()
+            return False
 
     @staticmethod
     def history(category_id=None, start=None, end=None, page=1, per_page=12):

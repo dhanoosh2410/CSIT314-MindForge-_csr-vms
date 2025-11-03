@@ -14,7 +14,8 @@ boundary_bp = Blueprint('boundary', __name__)
 @boundary_bp.route('/', methods=['GET'])
 def home():
     """Render the login page."""
-    return render_template('auth.html', page='login', body_class='bg login')
+    profiles = UserAdminController.get_active_profiles()
+    return render_template('auth.html', page='login', body_class='bg login', profiles=profiles)
 
 
 @boundary_bp.route('/login', methods=['POST'])
@@ -26,15 +27,15 @@ def login():
     user = AuthController.login(role, username, password)
     if user:
         session['user_id'] = user.id
-        session['role'] = user.role
+        session['role'] = user.profile.name if getattr(user, 'profile', None) else ''
         session['username'] = user.username
-        if user.role == 'User Admin':
+        if session['role'] == 'User Admin':
             return redirect(url_for('boundary.admin_new_user'))
-        elif user.role == 'CSR Representative':
+        elif session.get('role') == 'CSR Representative':
             return redirect(url_for('boundary.csr_dashboard'))
-        elif user.role == 'Person in Need':
+        elif session.get('role') == 'Person in Need':
             return redirect(url_for('boundary.pin_dashboard'))
-        elif user.role == 'Platform Manager':
+        elif session.get('role') == 'Platform Manager':
             return redirect(url_for('boundary.pm_dashboard'))
     flash('Invalid credentials or suspended account.')
     return redirect(url_for('boundary.home'))
@@ -82,7 +83,8 @@ def admin_users():
 @boundary_bp.route('/admin/users/new', methods=['GET'])
 def admin_new_user():
     AuthController.require_role('User Admin')
-    return render_template('user_admin.html', view='create', body_class='bg create')
+    profiles = UserAdminController.get_active_profiles()
+    return render_template('user_admin.html', view='create', profiles=profiles, body_class='bg create')
 
 
 @boundary_bp.route('/admin/users/create', methods=['POST'])
@@ -90,25 +92,27 @@ def admin_create_user():
     AuthController.require_role('User Admin')
     user_type = (request.form.get('user_type') or '').lower()
     if user_type == 'profile':
-        # Create a standalone profile
-        ok, msg = UserAdminController.create_profile(
-            full_name=request.form.get('full_name'),
-            email=request.form.get('email'),
-            phone=request.form.get('phone'),
-            active=True,
-        )
+        # create a role/profile (name supplied in full_name field)
+        name = (request.form.get('full_name') or '').strip()
+        ok, msg = UserAdminController.create_profile(name=name, active=True)
         flash(msg)
-        # After creating a profile, return to the profiles list
         return redirect(url_for('boundary.admin_users', type='profiles'))
     # otherwise create a user account
-    ok, msg = UserAdminController.create_user_with_profile(
-        role=request.form.get('role'),
-        username=request.form.get('username'),
-        password=request.form.get('password'),
-        active=True,
-        full_name=request.form.get('full_name'),
+    # split submitted full name into first/last
+    full_name = (request.form.get('full_name') or '').strip()
+    first_name = ''
+    last_name = ''
+    if full_name:
+        parts = full_name.split(None, 1)
+        first_name = parts[0]
+        last_name = parts[1] if len(parts) > 1 else ''
+    ok, msg = UserAdminController.create_user_account(
+        first_name=first_name,
+        last_name=last_name,
         email=request.form.get('email'),
         phone=request.form.get('phone'),
+        username=request.form.get('username'),
+        password=request.form.get('password'),
     )
     flash(msg)
     # return to accounts list
@@ -118,25 +122,35 @@ def admin_create_user():
 @boundary_bp.route('/admin/users/<int:user_id>/edit', methods=['GET'])
 def admin_edit_user(user_id):
     AuthController.require_role('User Admin')
-    from ..entity.models import User
-    user = User.query.get(user_id)
+    user = UserAdminController.get_user_by_id(user_id)
     if not user:
         flash('User not found.')
         return redirect(url_for('boundary.admin_users'))
-    return render_template('user_admin.html', view='edit', user=user, body_class='bg create')
+    profiles = UserAdminController.get_active_profiles()
+    return render_template('user_admin.html', view='edit', user=user, profiles=profiles, body_class='bg create')
 
 
 @boundary_bp.route('/admin/users/<int:user_id>/update', methods=['POST'])
 def admin_update_user(user_id):
     AuthController.require_role('User Admin')
+    # split full name into first/last
+    full_name = (request.form.get('full_name') or '').strip()
+    first_name = ''
+    last_name = ''
+    if full_name:
+        parts = full_name.split(None, 1)
+        first_name = parts[0]
+        last_name = parts[1] if len(parts) > 1 else ''
+
     ok, msg = UserAdminController.update_user_with_profile(
         user_id=user_id,
-        role=request.form.get('role'),
+        profile_name=request.form.get('role'),
         username=request.form.get('username'),
         password=request.form.get('password'),
         # this is here to fix the suspension of account when updating a user.
         active=request.form.get('active'),
-        full_name=request.form.get('full_name'),
+        first_name=first_name,
+        last_name=last_name,
         email=request.form.get('email'),
         phone=request.form.get('phone'),
     )
@@ -164,8 +178,7 @@ def admin_activate_user(user_id):
 @boundary_bp.route('/admin/profiles/<int:profile_id>/edit')
 def admin_edit_profile(profile_id):
     AuthController.require_role('User Admin')
-    from ..entity.models import UserProfile
-    profile = UserProfile.query.get(profile_id)
+    profile = UserAdminController.get_profile_by_id(profile_id)
     if not profile:
         flash('Profile not found.')
         return redirect(url_for('boundary.admin_users', type='profiles'))
@@ -182,9 +195,7 @@ def admin_update_profile(profile_id):
     AuthController.require_role('User Admin')
     ok, msg = UserAdminController.update_profile(
         profile_id=profile_id,
-        full_name=request.form.get('full_name'),
-        email=request.form.get('email'),
-        phone=request.form.get('phone'),
+        name=request.form.get('full_name'),
         active=request.form.get('active'),
     )
     flash(msg)
@@ -295,6 +306,17 @@ def csr_request(req_id):
         return redirect(url_for('boundary.csr_dashboard'))
     saved = CSRController.is_saved_by(req_id)
     return render_template('csr_rep.html', view='detail', request_item=r, categories=categories, saved=saved)
+
+
+@boundary_bp.route('/csr/request/<int:req_id>/accept', methods=['POST'])
+def csr_accept(req_id):
+    AuthController.require_role('CSR Representative')
+    ok = CSRController.accept_request(req_id)
+    if ok:
+        flash('You have accepted the request. The PIN will see your name once the request is marked completed.')
+    else:
+        flash('Unable to accept the request (it may already be accepted or closed).')
+    return redirect(url_for('boundary.csr_request', req_id=req_id))
 
 
 @boundary_bp.route('/csr/shortlist')

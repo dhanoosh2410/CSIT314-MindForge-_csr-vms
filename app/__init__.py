@@ -1,12 +1,20 @@
 # BOUNDARY: Flask app factory and blueprint registration
 from flask import Flask, request, redirect, url_for, flash, session
 from .entity.models import db, seed_database
+import os
 from .boundary.routes import boundary_bp
 
 def create_app(test_config=None):
     app = Flask(__name__)
     app.config['SECRET_KEY'] = 'dev-key-change-me'
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///csr_vms.db'
+    os.makedirs(app.instance_path, exist_ok=True)
+    db_path = os.path.join(app.instance_path, 'csr_vms.db')
+    try:
+        if not os.path.exists(db_path):
+            open(db_path, 'a').close()
+    except Exception:
+        pass
+    app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{db_path}"
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
     # ENTITY: bind SQLAlchemy

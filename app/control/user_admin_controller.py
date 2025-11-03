@@ -13,12 +13,16 @@ class UserAdminController:
         return User.search_accounts_fixed_four(q=q or "", page=page, per_page=per_page)
 
     @staticmethod
-    def create_user_with_profile(role, username, password, active, full_name, email, phone):
-        return User.create_with_profile(role, username, password, active, full_name, email, phone)
+    def create_user_account(first_name, last_name, email, phone, username, password):
+        return User.create_account(first_name, last_name, email, phone, username, password)
 
     @staticmethod
-    def update_user_with_profile(user_id, role, username, password, active, full_name, email, phone):
-        return User.update_with_profile(user_id, role, username, password, active, full_name, email, phone)
+    def get_user_by_id(user_id):
+        return User.get_by_id(user_id)
+
+    @staticmethod
+    def update_user_with_profile(user_id, profile_name, username, password, active, first_name, last_name, email, phone):
+        return User.update_with_profile(user_id, profile_name, username, password, active, first_name, last_name, email, phone)
 
     @staticmethod
     def suspend_user(user_id):
@@ -27,3 +31,27 @@ class UserAdminController:
     @staticmethod
     def activate_user(user_id):
         User.activate_user(user_id)
+    
+    @staticmethod
+    def create_profile(name, active=True):
+        return UserProfile.create_profile(name, active)
+
+    @staticmethod
+    def get_active_profiles():
+        return UserProfile.query.filter_by(is_active=True).order_by(UserProfile.name).all()
+
+    @staticmethod
+    def get_profile_by_id(profile_id):
+        return UserProfile.query.get(profile_id)
+
+    @staticmethod
+    def update_profile(profile_id, name, active=None):
+        return UserProfile.update_profile(profile_id, name, active)
+
+    @staticmethod
+    def suspend_profile(profile_id):
+        UserProfile.suspend_profile(profile_id)
+
+    @staticmethod
+    def activate_profile(profile_id):
+        UserProfile.activate_profile(profile_id)

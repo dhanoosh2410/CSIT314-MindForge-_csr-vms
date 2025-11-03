@@ -27,10 +27,16 @@
           <div class="login-input-wrap">
             <select name="role" class="login-input">
               <option value="" disabled selected>Select Your Role</option>
-              <option>User Admin</option>
-              <option>CSR Representative</option>
-              <option>Person in Need</option>
-              <option>Platform Manager</option>
+              {% if profiles %}
+                {% for p in profiles %}
+                  <option value="{{ p.name }}">{{ p.name }}</option>
+                {% endfor %}
+              {% else %}
+                <option>User Admin</option>
+                <option>CSR Representative</option>
+                <option>Person in Need</option>
+                <option>Platform Manager</option>
+              {% endif %}
             </select>
           </div>
 
