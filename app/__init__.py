@@ -7,14 +7,17 @@ from .boundary.routes import boundary_bp
 def create_app(test_config=None):
     app = Flask(__name__)
     app.config['SECRET_KEY'] = 'dev-key-change-me'
+    if test_config:
+        app.config.update(test_config)
     os.makedirs(app.instance_path, exist_ok=True)
-    db_path = os.path.join(app.instance_path, 'csr_vms.db')
-    try:
-        if not os.path.exists(db_path):
-            open(db_path, 'a').close()
-    except Exception:
-        pass
-    app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{db_path}"
+    if not app.config.get('SQLALCHEMY_DATABASE_URI'):
+        db_path = os.path.join(app.instance_path, 'csr_vms.db')
+        try:
+            if not os.path.exists(db_path):
+                open(db_path, 'a').close()
+        except Exception:
+            pass
+        app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{db_path}"
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
     # ENTITY: bind SQLAlchemy
