@@ -1,5 +1,5 @@
 # CONTROL: User Admin use cases (CRUD + search on Users & Profiles)
-from ..entity.models import db, User, UserProfile
+from ..entity.models import db, UserAccount, UserProfile
 
 class UserAdminController:
     @staticmethod
@@ -10,27 +10,27 @@ class UserAdminController:
         if (user_type or '').lower() == 'profiles':
             return UserProfile.search_profiles(q=q or "", page=page, per_page=per_page)
         # default to the fixed four accounts list
-        return User.search_accounts_fixed_four(q=q or "", page=page, per_page=per_page)
+        return UserAccount.search_accounts_fixed_four(q=q or "", page=page, per_page=per_page)
 
     @staticmethod
     def create_user_account(first_name, last_name, email, phone, username, password):
-        return User.create_account(first_name, last_name, email, phone, username, password)
+        return UserAccount.create_account(first_name, last_name, email, phone, username, password)
 
     @staticmethod
     def get_user_by_id(user_id):
-        return User.get_by_id(user_id)
+        return UserAccount.get_by_id(user_id)
 
     @staticmethod
     def update_user_with_profile(user_id, profile_name, username, password, active, first_name, last_name, email, phone):
-        return User.update_with_profile(user_id, profile_name, username, password, active, first_name, last_name, email, phone)
+        return UserAccount.update_with_profile(user_id, profile_name, username, password, active, first_name, last_name, email, phone)
 
     @staticmethod
     def suspend_user(user_id):
-        User.suspend_user(user_id)
+        UserAccount.suspend_user(user_id)
 
     @staticmethod
     def activate_user(user_id):
-        User.activate_user(user_id)
+        UserAccount.activate_user(user_id)
     
     @staticmethod
     def create_profile(name, active=True):

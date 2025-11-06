@@ -1,11 +1,11 @@
 # CONTROL: Authentication and authorization rules
 from flask import session, abort
-from ..entity.models import User
+from ..entity.models import UserAccount
 
 class AuthController:
     @staticmethod
     def login(role, username, password):
-        return User.login(role, username, password)
+        return UserAccount.login(role, username, password)
 
     @staticmethod
     def logout():

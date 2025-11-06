@@ -130,6 +130,18 @@ def admin_edit_user(user_id):
     return render_template('user_admin.html', view='edit', user=user, profiles=profiles, body_class='bg create')
 
 
+@boundary_bp.route('/admin/users/<int:user_id>/view', methods=['GET'])
+def admin_view_user(user_id):
+    AuthController.require_role('User Admin')
+    user = UserAdminController.get_user_by_id(user_id)
+    if not user:
+        flash('User not found.')
+        return redirect(url_for('boundary.admin_users'))
+    # profiles list is useful to render role name consistently
+    profiles = UserAdminController.get_active_profiles()
+    return render_template('user_admin.html', view='view_user', user=user, profiles=profiles, body_class='bg create')
+
+
 @boundary_bp.route('/admin/users/<int:user_id>/update', methods=['POST'])
 def admin_update_user(user_id):
     AuthController.require_role('User Admin')
@@ -188,6 +200,16 @@ def admin_edit_profile(profile_id):
         profile=profile,
         body_class='bg create'
     )
+
+
+@boundary_bp.route('/admin/profiles/<int:profile_id>/view')
+def admin_view_profile(profile_id):
+    AuthController.require_role('User Admin')
+    profile = UserAdminController.get_profile_by_id(profile_id)
+    if not profile:
+        flash('Profile not found.')
+        return redirect(url_for('boundary.admin_users', type='profiles'))
+    return render_template('user_admin.html', view='view_profile', profile=profile, body_class='bg create')
 
 
 @boundary_bp.route('/admin/profiles/<int:profile_id>/update', methods=['POST'])

@@ -10,9 +10,9 @@ import random
 db = SQLAlchemy()
 
 # =========================
-# Entity: User (logins)
+# Entity: UserAccount (logins)
 # =========================
-class User(db.Model):
+class UserAccount(db.Model):
     """
     Maps to 'user_accounts' table. Real authentication happens here.
     """
@@ -221,6 +221,44 @@ class Category(db.Model):
             return None
         return cls.query.get(cat_id)
 
+    # --- CRUD helpers for controllers to call ---
+    @classmethod
+    def create(cls, name):
+        if not name or not name.strip():
+            return False, "Category name required."
+        name = name.strip()
+        if cls.query.filter_by(name=name).first():
+            return False, "Category exists."
+        c = cls(name=name)
+        db.session.add(c)
+        db.session.commit()
+        return True, "Category created."
+
+    @classmethod
+    def update(cls, cat_id, name):
+        c = cls.query.get(cat_id)
+        if not c:
+            return False, "Category not found."
+        if not name or not name.strip():
+            return False, "Category name required."
+        name = name.strip()
+        # ensure uniqueness if changing
+        existing = cls.query.filter(cls.name == name, cls.id != cat_id).first()
+        if existing:
+            return False, "Another category with that name exists."
+        c.name = name
+        db.session.commit()
+        return True, "Category updated."
+
+    @classmethod
+    def delete(cls, cat_id):
+        c = cls.query.get(cat_id)
+        if not c:
+            return False, "Category not found."
+        db.session.delete(c)
+        db.session.commit()
+        return True, "Category deleted."
+
 
 # =========================
 # Entity: Request (+ helpers)
@@ -242,8 +280,8 @@ class Request(db.Model):
     shortlist_count = db.Column(db.Integer, default=0)
 
     category = db.relationship('Category')
-    pin = db.relationship('User', foreign_keys=[pin_id])
-    accepted_csr = db.relationship('User', foreign_keys=[accepted_csr_id])
+    pin = db.relationship('UserAccount', foreign_keys=[pin_id])
+    accepted_csr = db.relationship('UserAccount', foreign_keys=[accepted_csr_id])
 
     @classmethod
     def list_open(cls, category_id=None):
@@ -403,7 +441,7 @@ class Shortlist(db.Model):
     request_id = db.Column(db.Integer, db.ForeignKey('request.id'))
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
-    csr = db.relationship('User', foreign_keys=[csr_id])
+    csr = db.relationship('UserAccount', foreign_keys=[csr_id])
     request = db.relationship('Request')
 
     @classmethod
@@ -456,8 +494,8 @@ class ServiceHistory(db.Model):
     category_id = db.Column(db.Integer, db.ForeignKey('category.id'))
     date_completed = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
-    csr = db.relationship('User', foreign_keys=[csr_id])
-    pin = db.relationship('User', foreign_keys=[pin_id])
+    csr = db.relationship('UserAccount', foreign_keys=[csr_id])
+    pin = db.relationship('UserAccount', foreign_keys=[pin_id])
     request = db.relationship('Request')
     category = db.relationship('Category')
 
@@ -485,7 +523,7 @@ class ServiceHistory(db.Model):
             like = f"%{q}%"
             qry = qry.join(cls.request, isouter=True).join(cls.category, isouter=True)
             qry = qry.filter(or_(
-                User.username.like(like),
+                UserAccount.username.like(like),
                 Request.title.like(like),
                 Category.name.like(like),
             ))
@@ -717,7 +755,7 @@ def seed_database():
         pass
 
     try:
-        if User.query.first() or UserProfile.query.first() or Category.query.first():
+        if UserAccount.query.first() or UserProfile.query.first() or Category.query.first():
             return
     except Exception:
         pass
@@ -749,9 +787,9 @@ def seed_database():
         prof = profile_map.get(profile_name)
         if not prof:
             return None
-        if User.query.filter_by(username=username).first():
+        if UserAccount.query.filter_by(username=username).first():
             return None
-        u = User(profile_id=prof.id, username=username, is_active=True, first_name=first_name, last_name=last_name)
+        u = UserAccount(profile_id=prof.id, username=username, is_active=True, first_name=first_name, last_name=last_name)
         u.set_password(pwd)
         db.session.add(u)
         db.session.flush()
@@ -764,7 +802,7 @@ def seed_database():
     db.session.commit()
 
     # Additional seeding: create sample requests for the Person in Need user.
-    pin_user = User.query.filter_by(username='pin_user1').first()
+    pin_user = UserAccount.query.filter_by(username='pin_user1').first()
     if pin_user and not Request.query.filter_by(pin_id=pin_user.id).first():
         try:
             seed_pin_samples(pin_username='pin_user1', n_open=60, n_completed=40)
@@ -787,7 +825,7 @@ def seed_pin_samples(pin_username: str = 'pin_user1', n_open: int = 60, n_comple
 
 
     # Fetch the PIN user
-    pin = User.query.filter_by(username=pin_username).first()
+    pin = UserAccount.query.filter_by(username=pin_username).first()
     if not pin:
         raise RuntimeError(f"{pin_username!r} not found. Run seed_database() first.")
 
@@ -800,7 +838,7 @@ def seed_pin_samples(pin_username: str = 'pin_user1', n_open: int = 60, n_comple
     csr_prof = UserProfile.query.filter_by(name='CSR Representative').first()
     csr_user = None
     if csr_prof:
-        csr_user = User.query.filter_by(profile_id=csr_prof.id).first()
+        csr_user = UserAccount.query.filter_by(profile_id=csr_prof.id).first()
 
     # Helper to create random timestamps within the last 180 days
     now = datetime.now(timezone.utc)
