@@ -45,7 +45,7 @@ def login():
 def logout():
     """Clear session and render logout page."""
     username = session.get('username', '')
-    AuthController.logout()
+    session.clear()
     return render_template('auth.html', page='logout', username=username, body_class='bg login')
 
 

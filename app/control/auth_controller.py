@@ -8,11 +8,6 @@ class AuthController:
         return UserAccount.login(role, username, password)
 
     @staticmethod
-    def logout():
-        """Clear current session."""
-        session.clear()
-
-    @staticmethod
     def require_role(role):
         if session.get('role') != role:
             abort(403)
