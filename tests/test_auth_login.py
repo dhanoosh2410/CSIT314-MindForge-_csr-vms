@@ -2,6 +2,7 @@ from app.control.auth_controller import AuthController
 from app.entity import models
 import pytest
 
+
 def seed_roles_and_users():
     # Create the four canonical profiles
     names = ['User Admin', 'CSR Representative', 'Person in Need', 'Platform Manager']
@@ -17,7 +18,7 @@ def seed_roles_and_users():
     # Create users for each profile
     def create_user(profile_name, username, pwd, active=True):
         prof = profile_map[profile_name]
-        u = models.User(profile_id=prof.id, username=username, is_active=active)
+        u = models.UserAccount(profile_id=prof.id, username=username, is_active=active)
         u.set_password(pwd)
         models.db.session.add(u)
         return u
@@ -107,7 +108,7 @@ def test_login_suspended_account_per_role(app_instance, role, username):
     """Login fails when the user account is suspended"""
     with app_instance.app_context():
         seed_roles_and_users()
-        u = models.User.query.filter_by(username=username).first()
+        u = models.UserAccount.query.filter_by(username=username).first()
         assert u is not None
         u.is_active = False
         models.db.session.commit()
@@ -128,7 +129,7 @@ def test_login_unassigned_profile_fails(app_instance):
     """Login fails when account has no assigned profile"""
     with app_instance.app_context():
         # Create account without assigning profile_id (do not touch existing profiles)
-        u = models.User(username='no_profile', is_active=True)
+        u = models.UserAccount(username='no_profile', is_active=True)
         u.set_password('nopass')
         models.db.session.add(u)
         models.db.session.commit()
@@ -151,7 +152,7 @@ def test_login_suspended_profile_or_account(app_instance):
             p.is_active = False
             models.db.session.flush()
 
-        u = models.User(profile_id=p.id, username='suspended_profile_user', is_active=True)
+        u = models.UserAccount(profile_id=p.id, username='suspended_profile_user', is_active=True)
         u.set_password('pw')
         models.db.session.add(u)
         models.db.session.commit()
@@ -165,7 +166,7 @@ def test_login_suspended_profile_or_account(app_instance):
             models.db.session.add(p2)
             models.db.session.flush()
 
-        u2 = models.User(profile_id=p2.id, username='suspended_account_user', is_active=False)
+        u2 = models.UserAccount(profile_id=p2.id, username='suspended_account_user', is_active=False)
         u2.set_password('pw2')
         models.db.session.add(u2)
         models.db.session.commit()
