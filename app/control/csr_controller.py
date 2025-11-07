@@ -1,7 +1,7 @@
 
 # CONTROL: CSR Rep use cases (browse/search PIN requests, shortlist, history)
-from datetime import datetime
-from ..entity.models import Category, Request, Shortlist, ServiceHistory
+from datetime import datetime, timezone
+from ..entity.models import Category, Request, Shortlist, ServiceHistory, db
 from flask import session
 
 class CSRController:
@@ -10,10 +10,10 @@ class CSRController:
         return Category.get_all()
 
     @staticmethod
-    def search_requests(category_id=None, page=1, per_page=12):
+    def search_requests(category_id=None, q: str = '', page=1, per_page=12):
         # return paginated open requests without changing view counts.
-        # views will only be incremented when the CSR opens the detail
-        return Request.paginate_open_no_increment(category_id=category_id, page=page, per_page=per_page)
+        # supports optional category filter and text search q
+        return Request.paginate_open_no_increment(category_id=category_id, q=(q or '').strip() or None, page=page, per_page=per_page)
 
     @staticmethod
     def save_request(req_id):
@@ -27,12 +27,12 @@ class CSRController:
         return Shortlist.for_csr(csr_id)
 
     @staticmethod
-    def search_shortlist(q=None):
-        # return shortlist items for current CSR optionally filtered by query against request title/description
+    def search_shortlist(q: str = None, category_id: int = None):
+        # return shortlist items for current CSR optionally filtered by query and/or category
         csr_id = session.get('user_id')
         if not csr_id:
             return []
-        return Shortlist.search_for_csr(csr_id, q=q)
+        return Shortlist.search_for_csr(csr_id, q=(q or '').strip() or None, category_id=category_id)
 
     @staticmethod
     def remove_request(req_id):
@@ -40,6 +40,23 @@ class CSRController:
         if not csr_id:
             return False
         return Shortlist.remove_if_exists(csr_id, req_id)
+
+    @staticmethod
+    def accept_request(req_id):
+        csr_id = session.get('user_id')
+        if not csr_id:
+            return False
+        r = Request.query.get(req_id)
+        if not r or r.status != 'open':
+            return False
+        try:
+            r.accepted_csr_id = csr_id
+            r.accepted_at = datetime.now(timezone.utc)
+            db.session.commit()
+            return True
+        except Exception:
+            db.session.rollback()
+            return False
 
     @staticmethod
     def history(category_id=None, start=None, end=None, page=1, per_page=12):

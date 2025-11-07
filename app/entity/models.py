@@ -1,32 +1,34 @@
 # ENTITY + Use-case coordination in one place (per your lecture guidance)
 from flask_sqlalchemy import SQLAlchemy
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from sqlalchemy import or_, text
 from sqlalchemy.sql import func  # <-- added for PM reports
-import hashlib, random
+import hashlib
+from sqlalchemy.orm import joinedload
 import random
 
 db = SQLAlchemy()
 
-# Fixed demo accounts (exactly these 4)
-FIXED_ACCOUNTS = {
-    ('User Admin', 'user_admin1'),
-    ('CSR Representative', 'csr_user1'),
-    ('Person in Need', 'pin_user1'),
-    ('Platform Manager', 'pm_user1'),
-}
-
 # =========================
-# Entity: User (logins)
+# Entity: UserAccount (logins)
 # =========================
-class User(db.Model):
+class UserAccount(db.Model):
     """
     Maps to 'user_accounts' table. Real authentication happens here.
     """
     __tablename__ = 'user_accounts'
 
     id = db.Column(db.Integer, primary_key=True)
-    role = db.Column(db.String(50), nullable=False)
+    # link to the canonical profile/role (nullable until an admin assigns one)
+    profile_id = db.Column(db.Integer, db.ForeignKey('user_profiles.id'), nullable=True)
+    profile = db.relationship('UserProfile')
+
+    # account fields (personal info)
+    first_name = db.Column(db.String(80))
+    last_name = db.Column(db.String(80))
+    email = db.Column(db.String(120))
+    phone = db.Column(db.String(30))
+
     username = db.Column(db.String(80), unique=True, nullable=False)
     password_hash = db.Column(db.String(128), nullable=False)
     is_active = db.Column(db.Boolean, default=True)
@@ -39,29 +41,57 @@ class User(db.Model):
 
     @classmethod
     def login(cls, role, username, password):
-        u = cls.query.filter_by(username=username, role=role).first()
+        # role is the profile name selected on the login form. Users without
+        # an assigned profile cannot log in to a role until an admin assigns one.
+        prof = UserProfile.query.filter_by(name=role).first()
+        if not prof:
+            return None
+        # if the profile itself is suspended, deny login regardless of user state
+        if not prof.is_active:
+            return None
+        u = cls.query.filter_by(username=username, profile_id=prof.id).first()
         if u and u.is_active and u.check_password(password):
             return u
         return None
 
     # Keep signatures used by boundary; profile args ignored (profiles are standalone now)
     @classmethod
-    def create_with_profile(cls, role, username, password, active, full_name, email, phone):
+    def create_account(cls, first_name, last_name, email, phone, username, password, profile_name: str = None):
+        # prevent duplicate usernames
         if cls.query.filter_by(username=username).first():
             return False, "Username exists."
-        u = cls(role=role, username=username, is_active=bool(active))
-        u.set_password(password)
+
+        u = cls(first_name=(first_name or '').strip(), last_name=(last_name or '').strip(), email=(email or '').strip(), phone=(phone or '').strip(), username=username, is_active=True)
+        if password:
+            u.set_password(password)
+
+        if profile_name:
+            prof = UserProfile.query.filter_by(name=profile_name).first()
+            if prof:
+                u.profile_id = prof.id
+
         db.session.add(u)
         db.session.commit()
-        return True, "User created."
+        return True, "User account created."
 
     @classmethod
-    def update_with_profile(cls, user_id, role, username, password, active, full_name, email, phone):
+    def update_with_profile(cls, user_id, profile_name, username, password, active, first_name, last_name, email, phone):
         u = cls.query.get(user_id)
         if not u:
             return False, "User not found."
-        u.role = role
+        # resolve profile by name (may be None or empty to unassign)
+        if profile_name:
+            prof = UserProfile.query.filter_by(name=profile_name).first()
+            u.profile_id = prof.id if prof else None
+        else:
+            u.profile_id = None
+
         u.username = username
+        u.first_name = (first_name or '').strip()
+        u.last_name = (last_name or '').strip()
+        u.email = (email or '').strip()
+        u.phone = (phone or '').strip()
+
         if active is not None:
             if isinstance(active, str):
                 u.is_active = active.lower() in ('on','true','1')
@@ -71,6 +101,10 @@ class User(db.Model):
             u.set_password(password)
         db.session.commit()
         return True, "User updated."
+
+    @classmethod
+    def get_by_id(cls, user_id):
+        return cls.query.get(user_id)
 
     @classmethod
     def suspend_user(cls, user_id):
@@ -87,20 +121,13 @@ class User(db.Model):
             db.session.commit()
 
     @classmethod
-    def search_accounts_fixed_four(cls, q: str = "", page: int = 1, per_page: int = 20):
-        """
-        Return ONLY the four fixed accounts from user_accounts.
-        """
-        query = cls.query
-        ors = [ (cls.role == r) & (cls.username == u) for (r, u) in FIXED_ACCOUNTS ]
-        f = ors[0]
-        for cond in ors[1:]:
-            f = f | cond
-        query = query.filter(f)
+    def search_accounts_fixed_four(cls, q: str = "", page: int = 1, per_page: int = 20):        # Return users who have an assigned profile (profiles are driven by DB)
+        query = cls.query.options(joinedload(cls.profile)).join(UserProfile, isouter=True)
+        query = query.filter(UserProfile.id.isnot(None))
 
         if q:
             like = f"%{q}%"
-            query = query.filter((cls.username.like(like)) | (cls.role.like(like)))
+            query = query.filter((cls.username.like(like)) | (UserProfile.name.like(like)) )
 
         query = query.order_by(cls.id.asc())
         pag = query.paginate(page=page, per_page=per_page, error_out=False)
@@ -117,45 +144,27 @@ class User(db.Model):
 # Entity: UserProfile (standalone, no FK to User)
 # =========================
 class UserProfile(db.Model):
-    """
-    Standalone profiles table with NO user_id link.
-    """
     __tablename__ = 'user_profiles'
 
     id = db.Column(db.Integer, primary_key=True)
-    full_name = db.Column(db.String(120))
-    email = db.Column(db.String(120))
-    phone = db.Column(db.String(30))
-
-    # NEW: allow suspending/activating profiles, as per user stories
+    name = db.Column(db.String(80), unique=True, nullable=False)
     is_active = db.Column(db.Boolean, default=True)
 
     @classmethod
-    def create_profile(cls, full_name: str, email: str, phone: str, active: bool = True):
-        """
-        Create a standalone profile (name/email/phone/active flag).
-        """
-        p = cls(
-            full_name=(full_name or '').strip(),
-            email=(email or '').strip(),
-            phone=(phone or '').strip(),
-            is_active=bool(active),
-        )
+    def create_profile(cls, name: str, active: bool = True):
+        if cls.query.filter_by(name=name).first():
+            return False, "Profile exists."
+        p = cls(name=(name or '').strip(), is_active=bool(active))
         db.session.add(p)
         db.session.commit()
         return True, "Profile created."
 
     @classmethod
-    def update_profile(cls, profile_id: int, full_name: str, email: str, phone: str, active=None):
-        """
-        Update profile fields. If `active` is provided, toggles profile status.
-        """
+    def update_profile(cls, profile_id: int, name: str, active=None):
         p = cls.query.get(profile_id)
         if not p:
             return False, "Profile not found."
-        p.full_name = (full_name or '').strip()
-        p.email = (email or '').strip()
-        p.phone = (phone or '').strip()
+        p.name = (name or '').strip()
         if active is not None:
             if isinstance(active, str):
                 p.is_active = active.lower() in ('on', 'true', '1')
@@ -183,11 +192,7 @@ class UserProfile(db.Model):
         query = cls.query
         if q:
             like = f"%{q}%"
-            query = query.filter(
-                (cls.full_name.like(like)) |
-                (cls.email.like(like)) |
-                (cls.phone.like(like))
-            )
+            query = query.filter(cls.name.like(like))
         query = query.order_by(cls.id.asc())
         pag = query.paginate(page=page, per_page=per_page, error_out=False)
         return {
@@ -223,6 +228,44 @@ class Category(db.Model):
             return None
         return cls.query.get(cat_id)
 
+    # --- CRUD helpers for controllers to call ---
+    @classmethod
+    def create(cls, name):
+        if not name or not name.strip():
+            return False, "Category name required."
+        name = name.strip()
+        if cls.query.filter_by(name=name).first():
+            return False, "Category exists."
+        c = cls(name=name)
+        db.session.add(c)
+        db.session.commit()
+        return True, "Category created."
+
+    @classmethod
+    def update(cls, cat_id, name):
+        c = cls.query.get(cat_id)
+        if not c:
+            return False, "Category not found."
+        if not name or not name.strip():
+            return False, "Category name required."
+        name = name.strip()
+        # ensure uniqueness if changing
+        existing = cls.query.filter(cls.name == name, cls.id != cat_id).first()
+        if existing:
+            return False, "Another category with that name exists."
+        c.name = name
+        db.session.commit()
+        return True, "Category updated."
+
+    @classmethod
+    def delete(cls, cat_id):
+        c = cls.query.get(cat_id)
+        if not c:
+            return False, "Category not found."
+        db.session.delete(c)
+        db.session.commit()
+        return True, "Category deleted."
+
 
 # =========================
 # Entity: Request (+ helpers)
@@ -234,14 +277,18 @@ class Request(db.Model):
     title = db.Column(db.String(120))
     description = db.Column(db.Text)
     category_id = db.Column(db.Integer, db.ForeignKey('category.id'))
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     status = db.Column(db.String(20), default='open')  # open/completed
+    # if a CSR explicitly accepts a request, record who and when here. Nullable
+    accepted_csr_id = db.Column(db.Integer, db.ForeignKey('user_accounts.id'), nullable=True)
+    accepted_at = db.Column(db.DateTime, nullable=True)
     views_count = db.Column(db.Integer, default=0)
     shortlist_count = db.Column(db.Integer, default=0)
 
     category = db.relationship('Category')
-    pin = db.relationship('User', foreign_keys=[pin_id])
+    pin = db.relationship('UserAccount', foreign_keys=[pin_id])
+    accepted_csr = db.relationship('UserAccount', foreign_keys=[accepted_csr_id])
 
     @classmethod
     def list_open(cls, category_id=None):
@@ -274,10 +321,19 @@ class Request(db.Model):
         }
 
     @classmethod
-    def paginate_open_no_increment(cls, category_id=None, page=1, per_page=12):
+    def paginate_open_no_increment(cls, category_id=None, q: str = None, page=1, per_page=12):
+        """Return paginated open requests without incrementing views.
+
+        Supports optional filtering by category_id and text search q against
+        title and description.
+        """
         query = cls.query.filter_by(status='open')
         if category_id:
             query = query.filter_by(category_id=category_id)
+        # support optional text search against title/description
+        if q:
+            like = f"%{q}%"
+            query = query.filter((cls.title.like(like)) | (cls.description.like(like)))
         query = query.order_by(cls.created_at.desc())
         pag = query.paginate(page=page, per_page=per_page, error_out=False)
         return {
@@ -331,7 +387,16 @@ class Request(db.Model):
         r.status = status
         try:
             if prev_status != 'completed' and status == 'completed':
-                sh = ServiceHistory(pin_id=r.pin_id, csr_id=None, request_id=r.id, category_id=r.category_id)
+                csr_id_val = None
+                try:
+                    if getattr(r, 'accepted_csr_id', None):
+                        csr_id_val = r.accepted_csr_id
+                    else:
+                        recent_short = Shortlist.query.filter_by(request_id=r.id).order_by(Shortlist.created_at.desc()).first()
+                        csr_id_val = recent_short.csr_id if recent_short else None
+                except Exception:
+                    csr_id_val = None
+                sh = ServiceHistory(pin_id=r.pin_id, csr_id=csr_id_val, request_id=r.id, category_id=r.category_id)
                 db.session.add(sh)
         except Exception:
             pass
@@ -390,9 +455,9 @@ class Shortlist(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     csr_id = db.Column(db.Integer, db.ForeignKey('user_accounts.id'))
     request_id = db.Column(db.Integer, db.ForeignKey('request.id'))
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
-    csr = db.relationship('User', foreign_keys=[csr_id])
+    csr = db.relationship('UserAccount', foreign_keys=[csr_id])
     request = db.relationship('Request')
 
     @classmethod
@@ -414,8 +479,11 @@ class Shortlist(db.Model):
         return cls.query.filter_by(csr_id=csr_id).order_by(cls.created_at.desc()).all()
 
     @classmethod
-    def search_for_csr(cls, csr_id, q=None):
+    def search_for_csr(cls, csr_id, q=None, category_id=None):
+        """Search shortlist items for a CSR, optionally filtering by text q and category_id."""
         query = cls.query.filter_by(csr_id=csr_id).join(Request)
+        if category_id:
+            query = query.filter(Request.category_id == category_id)
         if q:
             like = f"%{q}%"
             query = query.filter((Request.title.like(like)) | (Request.description.like(like)))
@@ -443,10 +511,10 @@ class ServiceHistory(db.Model):
     pin_id = db.Column(db.Integer, db.ForeignKey('user_accounts.id'))
     request_id = db.Column(db.Integer, db.ForeignKey('request.id'))
     category_id = db.Column(db.Integer, db.ForeignKey('category.id'))
-    date_completed = db.Column(db.DateTime, default=datetime.utcnow)
+    date_completed = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
-    csr = db.relationship('User', foreign_keys=[csr_id])
-    pin = db.relationship('User', foreign_keys=[pin_id])
+    csr = db.relationship('UserAccount', foreign_keys=[csr_id])
+    pin = db.relationship('UserAccount', foreign_keys=[pin_id])
     request = db.relationship('Request')
     category = db.relationship('Category')
 
@@ -474,7 +542,7 @@ class ServiceHistory(db.Model):
             like = f"%{q}%"
             qry = qry.join(cls.request, isouter=True).join(cls.category, isouter=True)
             qry = qry.filter(or_(
-                User.username.like(like),
+                UserAccount.username.like(like),
                 Request.title.like(like),
                 Category.name.like(like),
             ))
@@ -567,6 +635,149 @@ def reset_user_tables():
 def seed_database():
     # Ensure core tables exist
     db.create_all()
+    try:
+        conn = db.engine.connect()
+        def table_columns(table_name):
+            res = conn.execute(text(f"PRAGMA table_info('{table_name}')"))
+            return {row['name'] for row in res}
+
+        up_cols = set()
+        try:
+            up_cols = table_columns('user_profiles')
+        except Exception:
+            up_cols = set()
+
+        if 'name' not in up_cols:
+            try:
+                conn.execute(text("ALTER TABLE user_profiles ADD COLUMN name VARCHAR(80)"))
+            except Exception:
+                pass
+            if 'full_name' in up_cols:
+                try:
+                    conn.execute(text("UPDATE user_profiles SET name = full_name WHERE name IS NULL OR name = ''"))
+                except Exception:
+                    pass
+
+        ua_cols = set()
+        try:
+            ua_cols = table_columns('user_accounts')
+        except Exception:
+            ua_cols = set()
+
+        added = False
+        if 'first_name' not in ua_cols:
+            try:
+                conn.execute(text("ALTER TABLE user_accounts ADD COLUMN first_name VARCHAR(80)"))
+                added = True
+            except Exception:
+                pass
+        if 'last_name' not in ua_cols:
+            try:
+                conn.execute(text("ALTER TABLE user_accounts ADD COLUMN last_name VARCHAR(80)"))
+                added = True
+            except Exception:
+                pass
+        if 'email' not in ua_cols:
+            try:
+                conn.execute(text("ALTER TABLE user_accounts ADD COLUMN email VARCHAR(120)"))
+                added = True
+            except Exception:
+                pass
+        if 'phone' not in ua_cols:
+            try:
+                conn.execute(text("ALTER TABLE user_accounts ADD COLUMN phone VARCHAR(30)"))
+                added = True
+            except Exception:
+                pass
+        if 'profile_id' not in ua_cols:
+            try:
+                conn.execute(text("ALTER TABLE user_accounts ADD COLUMN profile_id INTEGER"))
+                added = True
+            except Exception:
+                pass
+
+        try:
+            req_cols = table_columns('request')
+        except Exception:
+            req_cols = set()
+        if 'accepted_csr_id' not in req_cols:
+            try:
+                conn.execute(text("ALTER TABLE request ADD COLUMN accepted_csr_id INTEGER"))
+            except Exception:
+                pass
+        if 'accepted_at' not in req_cols:
+            try:
+                conn.execute(text("ALTER TABLE request ADD COLUMN accepted_at DATETIME"))
+            except Exception:
+                pass
+
+        if 'role' in ua_cols:
+            # create missing roles first
+            existing_role_names = {p.name for p in UserProfile.query.all()} if 'name' in table_columns('user_profiles') else set()
+            try:
+                rows = conn.execute(text("SELECT DISTINCT role FROM user_accounts WHERE role IS NOT NULL"))
+                distinct_roles = [r[0] for r in rows.fetchall() if r[0]]
+            except Exception:
+                distinct_roles = []
+            for rn in distinct_roles:
+                if rn not in existing_role_names:
+                    try:
+                        conn.execute(text("INSERT INTO user_profiles (name, is_active) VALUES (:n, 1)"), {'n': rn})
+                    except Exception:
+                        pass
+            # map user_accounts.role -> user_profiles.id
+            try:
+                try:
+                    rows = conn.execute(text("SELECT DISTINCT role FROM user_accounts WHERE role IS NOT NULL"))
+                    distinct_roles = [r[0] for r in rows.fetchall() if r[0]]
+                except Exception:
+                    distinct_roles = []
+                for rn in distinct_roles:
+                    pid_row = conn.execute(text("SELECT id FROM user_profiles WHERE name = :n LIMIT 1"), {'n': rn}).fetchone()
+                    if pid_row:
+                        pid = pid_row['id'] if isinstance(pid_row, dict) or hasattr(pid_row, 'keys') else pid_row[0]
+                        conn.execute(text("UPDATE user_accounts SET profile_id = :pid WHERE role = :r"), {'pid': pid, 'r': rn})
+            except Exception:
+                pass
+
+            try:
+                if 'role' in ua_cols:
+                    conn.execute(text("PRAGMA foreign_keys=OFF"))
+                    conn.execute(text("""
+                        CREATE TABLE IF NOT EXISTS user_accounts_new (
+                            id INTEGER PRIMARY KEY,
+                            profile_id INTEGER,
+                            first_name VARCHAR(80),
+                            last_name VARCHAR(80),
+                            email VARCHAR(120),
+                            phone VARCHAR(30),
+                            username VARCHAR(80) UNIQUE NOT NULL,
+                            password_hash VARCHAR(128) NOT NULL,
+                            is_active BOOLEAN DEFAULT 1
+                        )
+                    """))
+                    conn.execute(text("""
+                        INSERT INTO user_accounts_new (id, profile_id, first_name, last_name, email, phone, username, password_hash, is_active)
+                        SELECT ua.id,
+                               (SELECT id FROM user_profiles WHERE name = ua.role LIMIT 1),
+                               ua.first_name, ua.last_name, ua.email, ua.phone, ua.username, ua.password_hash, ua.is_active
+                        FROM user_accounts ua
+                    """))
+                    conn.execute(text("DROP TABLE user_accounts"))
+                    conn.execute(text("ALTER TABLE user_accounts_new RENAME TO user_accounts"))
+                    conn.execute(text("PRAGMA foreign_keys=ON"))
+            except Exception:
+                pass
+
+        conn.close()
+    except Exception:
+        pass
+
+    try:
+        if UserAccount.query.first() or UserProfile.query.first() or Category.query.first():
+            return
+    except Exception:
+        pass
 
     # Seed categories if empty
     if not Category.query.first():
@@ -574,64 +785,43 @@ def seed_database():
             db.session.add(Category(name=n))
         db.session.commit()
 
-    # Clear and seed to exact counts:
-    db.session.execute(text('DELETE FROM user_profiles'))
-    db.session.execute(text('DELETE FROM user_accounts'))
+    existing = {p.name for p in UserProfile.query.all()}
+    profile_map = {}
+    if existing:
+        names_to_ensure = list(existing)
+    else:
+        names_to_ensure = ['User Admin', 'CSR Representative', 'Person in Need', 'Platform Manager']
+
+    for name in names_to_ensure:
+        if name not in existing:
+            p = UserProfile(name=name, is_active=True)
+            db.session.add(p)
+            db.session.flush()
+            profile_map[name] = p
+        else:
+            profile_map[name] = UserProfile.query.filter_by(name=name).first()
     db.session.commit()
 
-    # Four fixed accounts ONLY (no profiles for them)
-    def createuser(role, username, pwd):
-        u = User(role=role, username=username, is_active=True)
+    def createuser_for_profile(profile_name, username, pwd, first_name='', last_name=''):
+        prof = profile_map.get(profile_name)
+        if not prof:
+            return None
+        if UserAccount.query.filter_by(username=username).first():
+            return None
+        u = UserAccount(profile_id=prof.id, username=username, is_active=True, first_name=first_name, last_name=last_name)
         u.set_password(pwd)
         db.session.add(u)
         db.session.flush()
         return u
 
-    createuser('User Admin', 'user_admin1', 'user_admin1!')
-    createuser('CSR Representative', 'csr_user1', 'csr_user1!')
-    createuser('Person in Need', 'pin_user1', 'pin_user1!')
-    createuser('Platform Manager', 'pm_user1', 'pm_user1!')
+    createuser_for_profile('User Admin', 'user_admin1', 'user_admin1!', first_name='User', last_name='Admin')
+    createuser_for_profile('CSR Representative', 'csr_user1', 'csr_user1!', first_name='CSR', last_name='User')
+    createuser_for_profile('Person in Need', 'pin_user1', 'pin_user1!', first_name='PIN', last_name='User')
+    createuser_for_profile('Platform Manager', 'pm_user1', 'pm_user1!', first_name='Platform', last_name='Manager')
     db.session.commit()
-
-    # Exactly 100 standalone demo profiles (no user_id)
-    if UserProfile.query.count() > 0:
-        print("Profiles already exist, skipping seeding.")
-        return
-
-    first_names = [
-        "Aiden","Benjamin","Chloe","Daniel","Evelyn","Farhan","Grace","Hannah","Isaac","Janet",
-        "Kevin","Lydia","Marcus","Nicole","Owen","Priya","Qistina","Rachel","Samuel","Tanvi",
-        "Umar","Vanessa","William","Xin Yi","Yusuf","Aaron","Bella","Clarence","Daphne","Elias",
-        "Fiona","Gavin","Hazel","Ian","Jia Hao","Kelly","Leon","Melissa","Nathan","Olivia",
-        "Patrick","Qi Hui","Ryan","Sophia","Travis","Umairah","Vera","Winston","Xue Ying","Zara"
-    ]
-    last_names = ["Tan","Lee","Lim","Goh","Ong","Teo","Chong","Koh"]
-
-    used_names = set()
-    profiles = []
-    idx = 0
-
-    while len(profiles) < 100:
-        fn = random.choice(first_names)
-        ln = random.choice(last_names)
-        full = f"{fn} {ln}"
-        if full in used_names:
-            continue
-        used_names.add(full)
-
-        slug_fn = fn.lower().replace(" ", "")
-        slug_ln = ln.lower().replace(" ", "")
-        email = f"{slug_fn}.{slug_ln}{len(profiles)+1:02d}@example.com"
-        phone = f"9{1230000 + (len(profiles)+1):07d}"
-        profiles.append(UserProfile(full_name=full, email=email, phone=phone, is_active=True))
-        idx += 1
-
-    db.session.add_all(profiles)
-    db.session.commit()
-    print(f"Seeded {len(profiles)} unique user profiles.")
 
     # Additional seeding: create sample requests for the Person in Need user.
-    pin_user = User.query.filter_by(username='pin_user1', role='Person in Need').first()
+    pin_user = UserAccount.query.filter_by(username='pin_user1').first()
     if pin_user and not Request.query.filter_by(pin_id=pin_user.id).first():
         try:
             seed_pin_samples(pin_username='pin_user1', n_open=60, n_completed=40)
@@ -651,11 +841,10 @@ def seed_pin_samples(pin_username: str = 'pin_user1', n_open: int = 60, n_comple
     Only call this function inside an app context.  It will raise if the
     specified user or categories do not exist.
     """
-    import random
-    from datetime import datetime, timedelta
+
 
     # Fetch the PIN user
-    pin = User.query.filter_by(username=pin_username, role='Person in Need').first()
+    pin = UserAccount.query.filter_by(username=pin_username).first()
     if not pin:
         raise RuntimeError(f"{pin_username!r} not found. Run seed_database() first.")
 
@@ -665,10 +854,13 @@ def seed_pin_samples(pin_username: str = 'pin_user1', n_open: int = 60, n_comple
         raise RuntimeError("No categories found. Run seed_database() first.")
 
     # Attach a CSR for history rows where possible (CSR history pages need data)
-    csr_user = User.query.filter_by(role='CSR Representative').first()
+    csr_prof = UserProfile.query.filter_by(name='CSR Representative').first()
+    csr_user = None
+    if csr_prof:
+        csr_user = UserAccount.query.filter_by(profile_id=csr_prof.id).first()
 
     # Helper to create random timestamps within the last 180 days
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     def random_ts():
         return now - timedelta(days=random.randint(0, 180), hours=random.randint(0, 23), minutes=random.randint(0, 59))
 

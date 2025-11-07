@@ -288,7 +288,7 @@
     <main class="main">
       {% if view == 'dashboard' %}
         <h1 class="title">PIN REQUESTS</h1>
-        <!-- Category filter -->
+        <!-- Category filter + search -->
         <form class="filters" method="get" action="{{ url_for('boundary.csr_dashboard') }}">
           <div class="select-wrap">
             <select class="select-blue" name="category_id" onchange="this.form.submit()">
@@ -298,6 +298,10 @@
               {% endfor %}
             </select>
           </div>
+          <div class="search">
+            <input type="text" name="q" value="{{ q if q is defined else '' }}" placeholder="Search title or description" />
+          </div>
+          <button class="btn-orange" type="submit">Search</button>
         </form>
         <!-- Requests table -->
         <div class="tablewrap">
@@ -341,18 +345,26 @@
         <!-- Pagination -->
         {% if pages and pages > 1 %}
         <div class="pager">
-          <a class="pagebtn {{ 'disabled' if page<=1 else '' }}" href="{{ url_for('boundary.csr_dashboard', category_id=category_id, page=page-1, per_page=per_page) }}">Previous</a>
+          <a class="pagebtn {{ 'disabled' if page<=1 else '' }}" href="{{ url_for('boundary.csr_dashboard', category_id=category_id, q=q if q is defined else '', page=page-1, per_page=per_page) }}">Previous</a>
           {% for p in range(1, pages+1) %}
-            <a class="pagebtn {{ 'active' if p==page else '' }}" href="{{ url_for('boundary.csr_dashboard', category_id=category_id, page=p, per_page=per_page) }}">{{ p }}</a>
+            <a class="pagebtn {{ 'active' if p==page else '' }}" href="{{ url_for('boundary.csr_dashboard', category_id=category_id, q=q if q is defined else '', page=p, per_page=per_page) }}">{{ p }}</a>
           {% endfor %}
-          <a class="pagebtn {{ 'disabled' if page>=pages else '' }}" href="{{ url_for('boundary.csr_dashboard', category_id=category_id, page=page+1, per_page=per_page) }}">Next</a>
+          <a class="pagebtn {{ 'disabled' if page>=pages else '' }}" href="{{ url_for('boundary.csr_dashboard', category_id=category_id, q=q if q is defined else '', page=page+1, per_page=per_page) }}">Next</a>
         </div>
         {% endif %}
 
       {% elif view == 'shortlist' %}
         <h1 class="title">MY SHORTLIST</h1>
-        <!-- Shortlist search -->
+        <!-- Shortlist filters: category + search -->
         <form method="get" action="{{ url_for('boundary.csr_shortlist') }}" class="filters">
+          <div class="select-wrap">
+            <select class="select-blue" name="category_id" onchange="this.form.submit()">
+              <option value="">All Categories</option>
+              {% for c in categories %}
+                <option value="{{ c.id }}" {{ 'selected' if category_id==c.id else '' }}>{{ c.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
           <div class="search">
             <input type="text" name="sq" value="{{ shortlist_q if shortlist_q is defined else '' }}" placeholder="Search shortlist" />
           </div>
@@ -362,7 +374,7 @@
         <div class="tablewrap">
           <table>
             <thead>
-              <tr><th>#</th><th>Title</th><th class="actions">Action</th></tr>
+              <tr><th>#</th><th>Title</th><th>Shortlists</th><th class="actions">Action</th></tr>
             </thead>
             <tbody>
               {% for s in shortlist %}
@@ -370,6 +382,7 @@
                 <tr>
                   <td>{{ loop.index }}</td>
                   <td><a href="{{ url_for('boundary.csr_request', req_id=s.request.id) }}">{{ s.request.title }}</a></td>
+                  <td>{{ s.request.shortlist_count or 0 }}</td>
                   <td class="actions">
                     <form method="post" action="{{ url_for('boundary.csr_unsave', req_id=s.request.id) }}" style="display:inline-block;">
                       <button class="btn btn-red" type="submit">Remove</button>
@@ -379,11 +392,11 @@
                 {% else %}
                 <tr>
                   <td>{{ loop.index }}</td>
-                  <td colspan="2"><span class="text-muted">[Request deleted]</span></td>
+                  <td colspan="3"><span class="text-muted">[Request deleted]</span></td>
                 </tr>
                 {% endif %}
               {% else %}
-                <tr><td colspan="3">No saved requests.</td></tr>
+                <tr><td colspan="4">No saved requests.</td></tr>
               {% endfor %}
             </tbody>
           </table>
@@ -444,8 +457,8 @@
           <p><strong>Shortlists:</strong> {{ request_item.shortlist_count }}</p>
           <p>{{ request_item.description }}</p>
           <p><strong>Owner:</strong>
-            {% if request_item.pin and request_item.pin.profile %}
-              {{ request_item.pin.profile.full_name }} <small class="text-muted">({{ request_item.pin.username }})</small>
+            {% if request_item.pin and (request_item.pin.first_name or request_item.pin.last_name) %}
+              {{ request_item.pin.first_name }} {{ request_item.pin.last_name }} <small class="text-muted">({{ request_item.pin.username }})</small>
             {% else %}
               {{ request_item.pin.username if request_item.pin else '-' }}
             {% endif %}
@@ -459,6 +472,16 @@
               <form method="post" action="{{ url_for('boundary.csr_save', req_id=request_item.id) }}">
                 <button class="btn btn-green" type="submit">Save to Shortlist</button>
               </form>
+            {% endif %}
+            {# accept button: shown to CSR reps when request is open and not already accepted #}
+            {% if request_item.status == 'open' and (request_item.accepted_csr_id is not defined or not request_item.accepted_csr_id) and session.get('user_id') != request_item.pin_id %}
+              <form method="post" action="{{ url_for('boundary.csr_accept', req_id=request_item.id) }}" style="display:inline-block; margin-left:8px;">
+                <button class="btn btn-orange" type="submit">Accept Request</button>
+              </form>
+            {% elif request_item.accepted_csr %}
+              <div style="margin-left:8px; font-weight:700;">
+                Accepted by: {{ request_item.accepted_csr.first_name }} {{ request_item.accepted_csr.last_name }}
+              </div>
             {% endif %}
             <a class="btn btn-orange" href="{{ url_for('boundary.csr_dashboard') }}">Back</a>
           </div>
