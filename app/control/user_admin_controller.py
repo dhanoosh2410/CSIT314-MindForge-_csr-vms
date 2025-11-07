@@ -13,8 +13,8 @@ class UserAdminController:
         return UserAccount.search_accounts_fixed_four(q=q or "", page=page, per_page=per_page)
 
     @staticmethod
-    def create_user_account(first_name, last_name, email, phone, username, password):
-        return UserAccount.create_account(first_name, last_name, email, phone, username, password)
+    def create_user_account(first_name, last_name, email, phone, username, password, profile_name: str = None):
+        return UserAccount.create_account(first_name, last_name, email, phone, username, password, profile_name=profile_name)
 
     @staticmethod
     def get_user_by_id(user_id):

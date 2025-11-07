@@ -56,13 +56,20 @@ class UserAccount(db.Model):
 
     # Keep signatures used by boundary; profile args ignored (profiles are standalone now)
     @classmethod
-    def create_account(cls, first_name, last_name, email, phone, username, password):
-
+    def create_account(cls, first_name, last_name, email, phone, username, password, profile_name: str = None):
+        # prevent duplicate usernames
         if cls.query.filter_by(username=username).first():
             return False, "Username exists."
+
         u = cls(first_name=(first_name or '').strip(), last_name=(last_name or '').strip(), email=(email or '').strip(), phone=(phone or '').strip(), username=username, is_active=True)
         if password:
             u.set_password(password)
+
+        if profile_name:
+            prof = UserProfile.query.filter_by(name=profile_name).first()
+            if prof:
+                u.profile_id = prof.id
+
         db.session.add(u)
         db.session.commit()
         return True, "User account created."

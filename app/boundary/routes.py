@@ -106,6 +106,7 @@ def admin_create_user():
         parts = full_name.split(None, 1)
         first_name = parts[0]
         last_name = parts[1] if len(parts) > 1 else ''
+    selected_role = (request.form.get('role') or '').strip() or None
     ok, msg = UserAdminController.create_user_account(
         first_name=first_name,
         last_name=last_name,
@@ -113,6 +114,7 @@ def admin_create_user():
         phone=request.form.get('phone'),
         username=request.form.get('username'),
         password=request.form.get('password'),
+        profile_name=selected_role,
     )
     flash(msg)
     # return to accounts list
