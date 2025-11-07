@@ -265,11 +265,25 @@
 
         {% if pages and pages > 1 %}
         <div class="pager">
-          <a class="pagebtn {{ 'disabled' if page<=1 else '' }}" href="{{ url_for('boundary.admin_users', q=q, type=type, page=page-1) }}">Previous</a>
+          {% if page > 1 %}
+            <a class="pagebtn" href="{{ url_for('boundary.admin_users', q=q, type=type, page=page-1) }}">Previous</a>
+          {% else %}
+            <span class="pagebtn disabled">Previous</span>
+          {% endif %}
+
           {% for p in range(1, pages+1) %}
-            <a class="pagebtn {{ 'active' if p==page else '' }}" href="{{ url_for('boundary.admin_users', q=q, type=type, page=p) }}">{{ p }}</a>
+            {% if p == page %}
+              <span class="pagebtn active">{{ p }}</span>
+            {% else %}
+              <a class="pagebtn" href="{{ url_for('boundary.admin_users', q=q, type=type, page=p) }}">{{ p }}</a>
+            {% endif %}
           {% endfor %}
-          <a class="pagebtn {{ 'disabled' if page>=pages else '' }}" href="{{ url_for('boundary.admin_users', q=q, type=type, page=page+1) }}">Next</a>
+
+          {% if page < pages %}
+            <a class="pagebtn" href="{{ url_for('boundary.admin_users', q=q, type=type, page=page+1) }}">Next</a>
+          {% else %}
+            <span class="pagebtn disabled">Next</span>
+          {% endif %}
         </div>
         {% endif %}
 
