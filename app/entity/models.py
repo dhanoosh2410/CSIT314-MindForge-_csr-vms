@@ -321,10 +321,19 @@ class Request(db.Model):
         }
 
     @classmethod
-    def paginate_open_no_increment(cls, category_id=None, page=1, per_page=12):
+    def paginate_open_no_increment(cls, category_id=None, q: str = None, page=1, per_page=12):
+        """Return paginated open requests without incrementing views.
+
+        Supports optional filtering by category_id and text search q against
+        title and description.
+        """
         query = cls.query.filter_by(status='open')
         if category_id:
             query = query.filter_by(category_id=category_id)
+        # support optional text search against title/description
+        if q:
+            like = f"%{q}%"
+            query = query.filter((cls.title.like(like)) | (cls.description.like(like)))
         query = query.order_by(cls.created_at.desc())
         pag = query.paginate(page=page, per_page=per_page, error_out=False)
         return {
@@ -470,8 +479,11 @@ class Shortlist(db.Model):
         return cls.query.filter_by(csr_id=csr_id).order_by(cls.created_at.desc()).all()
 
     @classmethod
-    def search_for_csr(cls, csr_id, q=None):
+    def search_for_csr(cls, csr_id, q=None, category_id=None):
+        """Search shortlist items for a CSR, optionally filtering by text q and category_id."""
         query = cls.query.filter_by(csr_id=csr_id).join(Request)
+        if category_id:
+            query = query.filter(Request.category_id == category_id)
         if q:
             like = f"%{q}%"
             query = query.filter((Request.title.like(like)) | (Request.description.like(like)))

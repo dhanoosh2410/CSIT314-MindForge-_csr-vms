@@ -248,9 +248,10 @@ def csr_dashboard():
     AuthController.require_role('CSR Representative')
     categories = CSRController.get_categories()
     qcat = request.args.get('category_id', type=int)
+    qtext = (request.args.get('q','') or '').strip()
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 12, type=int)
-    pag = CSRController.search_requests(category_id=qcat, page=page, per_page=per_page)
+    pag = CSRController.search_requests(category_id=qcat, q=qtext, page=page, per_page=per_page)
     requests_list = pag['items']
     full_shortlist = CSRController.get_shortlist()
     history_pag = CSRController.history()
@@ -266,6 +267,7 @@ def csr_dashboard():
         requests=requests_list,
         saved_ids=saved_ids,
         category_id=qcat,
+        q=qtext,
         page=pag['page'],
         per_page=pag['per_page'],
         total=pag['total'],
@@ -347,11 +349,12 @@ def csr_accept(req_id):
 def csr_shortlist():
     AuthController.require_role('CSR Representative')
     categories = CSRController.get_categories()
-    sq = request.args.get('sq','').strip()
-    shortlist = CSRController.search_shortlist(sq) if sq else CSRController.get_shortlist()
+    sq = (request.args.get('sq','') or '').strip()
+    cat_filter = request.args.get('category_id', type=int)
+    shortlist = CSRController.search_shortlist(q=sq, category_id=cat_filter) if (sq or cat_filter) else CSRController.get_shortlist()
     full_shortlist = CSRController.get_shortlist()
     saved_ids = {s.request_id for s in (full_shortlist or [])}
-    return render_template('csr_rep.html', view='shortlist', categories=categories, shortlist=shortlist, saved_ids=saved_ids, shortlist_q=sq)
+    return render_template('csr_rep.html', view='shortlist', categories=categories, shortlist=shortlist, saved_ids=saved_ids, shortlist_q=sq, category_id=cat_filter)
 
 
 # ---------- PIN ----------
