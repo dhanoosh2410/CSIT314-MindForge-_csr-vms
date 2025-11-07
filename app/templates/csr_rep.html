@@ -374,7 +374,7 @@
         <div class="tablewrap">
           <table>
             <thead>
-              <tr><th>#</th><th>Title</th><th class="actions">Action</th></tr>
+              <tr><th>#</th><th>Title</th><th>Shortlists</th><th class="actions">Action</th></tr>
             </thead>
             <tbody>
               {% for s in shortlist %}
@@ -382,6 +382,7 @@
                 <tr>
                   <td>{{ loop.index }}</td>
                   <td><a href="{{ url_for('boundary.csr_request', req_id=s.request.id) }}">{{ s.request.title }}</a></td>
+                  <td>{{ s.request.shortlist_count or 0 }}</td>
                   <td class="actions">
                     <form method="post" action="{{ url_for('boundary.csr_unsave', req_id=s.request.id) }}" style="display:inline-block;">
                       <button class="btn btn-red" type="submit">Remove</button>
@@ -391,11 +392,11 @@
                 {% else %}
                 <tr>
                   <td>{{ loop.index }}</td>
-                  <td colspan="2"><span class="text-muted">[Request deleted]</span></td>
+                  <td colspan="3"><span class="text-muted">[Request deleted]</span></td>
                 </tr>
                 {% endif %}
               {% else %}
-                <tr><td colspan="3">No saved requests.</td></tr>
+                <tr><td colspan="4">No saved requests.</td></tr>
               {% endfor %}
             </tbody>
           </table>

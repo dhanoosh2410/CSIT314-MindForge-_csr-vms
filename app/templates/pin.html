@@ -284,6 +284,13 @@
 
     <!-- Main content -->
     <main class="pin-content">
+      {# Flash messages -> show as alert for immediate feedback #}
+      {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        <div id="flash" style="display:none">{{ messages|join(' • ') }}</div>
+        <script>const f=document.getElementById('flash');if(f&&f.textContent.trim())alert(f.textContent.trim());</script>
+      {% endif %}
+      {% endwith %}
       {# CREATE NEW REQUEST #}
       {% if view == 'create' %}
         <h1>Create New Request</h1>
@@ -351,7 +358,8 @@
                   <td>{{ r.views_count or 0 }}</td>
                   <td>{{ r.shortlist_count or 0 }}</td>
                   <td>
-                    <a href="{{ url_for('boundary.pin_edit_req', req_id=r.id, page=page, per_page=per_page, q=q) }}" class="actions-btn">Edit</a>
+                    <a href="{{ url_for('boundary.pin_edit_req', req_id=r.id, page=page, per_page=per_page, q=q, mode='view') }}" class="actions-btn">View</a>
+                    <a href="{{ url_for('boundary.pin_edit_req', req_id=r.id, page=page, per_page=per_page, q=q) }}" class="actions-btn" style="margin-left:6px; background:#6aa84f;">Edit</a>
                     <form method="post" action="{{ url_for('boundary.pin_delete_req', req_id=r.id) }}" style="display:inline;" onsubmit="return confirm('Delete this request?');">
                       <input type="hidden" name="next" value="{{ url_for('boundary.pin_dashboard', page=page, per_page=per_page, q=q) }}" />
                       <button type="submit" class="actions-btn" style="margin-left:4px; background: var(--danger);">Delete</button>
@@ -413,34 +421,55 @@
           <input type="hidden" name="q" value="{{ q }}" />
           <div class="form-group">
             <label for="cat">Category</label>
-            <select id="cat" name="category_id">
-              {% for c in categories %}
-                <option value="{{ c.id }}" {% if c.id == req.category_id %}selected{% endif %}>{{ c.name }}</option>
-              {% endfor %}
-            </select>
+            {% if mode is defined and mode == 'view' %}
+              <div style="padding:10px;border:1px solid var(--grey-border);border-radius:6px;background:#fff;">{{ req.category.name if req.category else '-' }}</div>
+            {% else %}
+              <select id="cat" name="category_id">
+                {% for c in categories %}
+                  <option value="{{ c.id }}" {% if c.id == req.category_id %}selected{% endif %}>{{ c.name }}</option>
+                {% endfor %}
+              </select>
+            {% endif %}
           </div>
           <div class="form-group">
             <label for="title">Title</label>
-            <input id="title" name="title" type="text" value="{{ req.title }}" required />
+            {% if mode is defined and mode == 'view' %}
+              <div style="padding:10px;border:1px solid var(--grey-border);border-radius:6px;background:#fff;">{{ req.title }}</div>
+            {% else %}
+              <input id="title" name="title" type="text" value="{{ req.title }}" required />
+            {% endif %}
           </div>
           <div class="form-group">
             <label for="description">Request</label>
-            <textarea id="description" name="description" rows="5">{{ req.description }}</textarea>
+            {% if mode is defined and mode == 'view' %}
+              <div style="padding:10px;border:1px solid var(--grey-border);border-radius:6px;background:#fff;white-space:pre-wrap;">{{ req.description }}</div>
+            {% else %}
+              <textarea id="description" name="description" rows="5">{{ req.description }}</textarea>
+            {% endif %}
           </div>
           <div class="form-group">
             <label for="status">Status</label>
-            <select id="status" name="status">
-              <option value="open" {% if req.status == 'open' %}selected{% endif %}>Open</option>
-              <option value="completed" {% if req.status == 'completed' %}selected{% endif %}>Completed</option>
-            </select>
+            {% if mode is defined and mode == 'view' %}
+              <div style="padding:10px;border:1px solid var(--grey-border);border-radius:6px;background:#fff;">{{ req.status }}</div>
+            {% else %}
+              <select id="status" name="status">
+                <option value="open" {% if req.status == 'open' %}selected{% endif %}>Open</option>
+                <option value="completed" {% if req.status == 'completed' %}selected{% endif %}>Completed</option>
+              </select>
+            {% endif %}
           </div>
           <div class="form-group" style="display:flex; gap:12px; font-size:0.9rem; color: var(--primary);">
             <div>Views: <strong>{{ req.views_count or 0 }}</strong></div>
             <div>Shortlisted: <strong>{{ req.shortlist_count or 0 }}</strong></div>
           </div>
           <div class="form-row" style="margin-top:16px;">
-            <button type="submit" class="btn-submit">Save</button>
-            <a href="{{ next or url_for('boundary.pin_dashboard', page=page, per_page=per_page, q=q) }}" class="btn-cancel" style="padding: 10px 24px;">Cancel</a>
+            {% if mode is defined and mode == 'view' %}
+              <a href="{{ url_for('boundary.pin_edit_req', req_id=req.id, page=page, per_page=per_page, q=q) }}" class="btn-submit" style="margin-right:8px;">Edit</a>
+              <a href="{{ next or url_for('boundary.pin_dashboard', page=page, per_page=per_page, q=q) }}" class="btn-cancel" style="padding: 10px 24px;">Back</a>
+            {% else %}
+              <button type="submit" class="btn-submit">Save</button>
+              <a href="{{ next or url_for('boundary.pin_dashboard', page=page, per_page=per_page, q=q) }}" class="btn-cancel" style="padding: 10px 24px;">Cancel</a>
+            {% endif %}
           </div>
         </form>
 

@@ -442,7 +442,9 @@ def pin_edit_req(req_id):
     per_page = request.args.get('per_page', 12, type=int)
     q = request.args.get('q','').strip()
     next_url = request.args.get('next') or url_for('boundary.pin_dashboard', page=page, per_page=per_page, q=q)
-    return render_template('pin.html', view='edit', req=r, categories=categories, next=next_url, page=page, per_page=per_page, q=q)
+    # allow 'mode=view' param to render a read-only view of the request
+    mode = request.args.get('mode', 'edit')
+    return render_template('pin.html', view='edit', req=r, categories=categories, next=next_url, page=page, per_page=per_page, q=q, mode=mode)
 
 
 @boundary_bp.route('/pin/request/<int:req_id>/delete', methods=['POST'])
