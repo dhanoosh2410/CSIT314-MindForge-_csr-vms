@@ -16,6 +16,10 @@ class CSRController:
         return Request.paginate_open_no_increment(category_id=category_id, q=(q or '').strip() or None, page=page, per_page=per_page)
 
     @staticmethod
+    def get_open_requests(category_id=None, page=1, per_page=12):
+        return Request.paginate_open_no_increment(category_id=category_id, q=None, page=page, per_page=per_page)
+
+    @staticmethod
     def save_request(req_id):
         csr_id = session.get('user_id')
         if not csr_id: return
