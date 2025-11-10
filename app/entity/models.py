@@ -300,26 +300,7 @@ class Request(db.Model):
             r.views_count = (r.views_count or 0) + 1
         db.session.commit()
         return items
-
-    @classmethod
-    def paginate_open(cls, category_id=None, page=1, per_page=12):
-        query = cls.query.filter_by(status='open')
-        if category_id:
-            query = query.filter_by(category_id=category_id)
-        query = query.order_by(cls.created_at.desc())
-        pag = query.paginate(page=page, per_page=per_page, error_out=False)
-        items = pag.items
-        for r in items:
-            r.views_count = (r.views_count or 0) + 1
-        db.session.commit()
-        return {
-            'items': items,
-            'total': pag.total,
-            'page': pag.page,
-            'per_page': pag.per_page,
-            'pages': pag.pages,
-        }
-
+    
     @classmethod
     def paginate_open_no_increment(cls, category_id=None, q: str = None, page=1, per_page=12):
         """Return paginated open requests without incrementing views.
