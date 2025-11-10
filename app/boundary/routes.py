@@ -251,7 +251,10 @@ def csr_dashboard():
     qtext = (request.args.get('q','') or '').strip()
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 12, type=int)
-    pag = CSRController.search_requests(category_id=qcat, q=qtext, page=page, per_page=per_page)
+    if qtext:
+        pag = CSRController.search_requests(category_id=qcat, q=qtext, page=page, per_page=per_page)
+    else:
+        pag = CSRController.get_open_requests(category_id=qcat, page=page, per_page=per_page)
     requests_list = pag['items']
     full_shortlist = CSRController.get_shortlist()
     history_pag = CSRController.history()
