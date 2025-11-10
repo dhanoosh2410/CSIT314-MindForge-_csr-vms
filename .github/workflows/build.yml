@@ -9,6 +9,9 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Ensure Python can import the package modules in the repository root during CI
+    env:
+      PYTHONPATH: ${{ github.workspace }}
     strategy:
       matrix:
         python-version: [3.11, 3.12]
