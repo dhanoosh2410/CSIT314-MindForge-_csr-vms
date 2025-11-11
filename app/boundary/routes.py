@@ -480,7 +480,10 @@ def pin_history():
 def pm_dashboard():
     AuthController.require_role('Platform Manager')
     q = request.args.get('q','').strip()
-    categories = PMController.search_categories(q)
+    if q:
+        categories = PMController.search_categories(q)
+    else:
+        categories = PMController.get_categories()
     return render_template('pm.html', view='dashboard', categories=categories, q=q)
 
 
