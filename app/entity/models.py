@@ -121,7 +121,7 @@ class UserAccount(db.Model):
             db.session.commit()
 
     @classmethod
-    def search_accounts_fixed_four(cls, q: str = "", page: int = 1, per_page: int = 20):        # Return users who have an assigned profile (profiles are driven by DB)
+    def search_user_account(cls, q: str = "", page: int = 1, per_page: int = 20):        # Return users who have an assigned profile (profiles are driven by DB)
         query = cls.query.options(joinedload(cls.profile)).join(UserProfile, isouter=True)
         query = query.filter(UserProfile.id.isnot(None))
 

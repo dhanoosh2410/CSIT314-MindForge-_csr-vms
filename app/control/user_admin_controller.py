@@ -10,7 +10,7 @@ class UserAdminController:
         if (user_type or '').lower() == 'profiles':
             return UserProfile.search_profiles(q=q or "", page=page, per_page=per_page)
         # default to the fixed four accounts list
-        return UserAccount.search_accounts_fixed_four(q=q or "", page=page, per_page=per_page)
+        return UserAccount.search_user_account(q=q or "", page=page, per_page=per_page)
 
     @staticmethod
     def create_user_account(first_name, last_name, email, phone, username, password, profile_name: str = None):
