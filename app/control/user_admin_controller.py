@@ -38,11 +38,11 @@ class UserAdminController:
 
     @staticmethod
     def get_active_profiles():
-        return UserProfile.query.filter_by(is_active=True).order_by(UserProfile.name).all()
+        return UserProfile.get_active_profiles()
 
     @staticmethod
     def get_profile_by_id(profile_id):
-        return UserProfile.query.get(profile_id)
+        return UserProfile.get_by_id(profile_id)
 
     @staticmethod
     def update_profile(profile_id, name, active=None):

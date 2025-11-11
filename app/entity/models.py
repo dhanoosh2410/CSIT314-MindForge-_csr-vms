@@ -203,6 +203,18 @@ class UserProfile(db.Model):
             "pages": pag.pages,
         }
 
+    @classmethod
+    def get_by_id(cls, profile_id: int):
+        """Return a UserProfile by id or None."""
+        if profile_id is None:
+            return None
+        return cls.query.get(profile_id)
+
+    @classmethod
+    def get_active_profiles(cls):
+        """Return all active profiles ordered by name."""
+        return cls.query.filter_by(is_active=True).order_by(cls.name).all()
+
 
 # =========================
 # Entity: Category
