@@ -1,27 +1,52 @@
-# CSR Volunteer Management System (Flask, BCE, SQLite)
+CSR Volunteer Management System 
 
-This app implements the CSR Volunteer Management System using **Flask** with a strict **B-C-E (Boundary–Control–Entity)** structure and **SQLite**.
+Description abouth the web app: Volunteer platform built with Flask following Boundary–Control–Entity (BCE) framework and onbject oriented. Supports four roles: User Admin, CSR Representative, Person-In-Need (PIN), and Platform Manager.
+
+Tech Stack:
+-DB: SQLite (csr_vms.db)
+-Frontend: HTML/CSS 
+-Backend: Python 3.13, Flask, Jinja2, SQLAlchemy (SQLite)
 
 ## Where is the SQLite file?
 The database file is created **on first run** in the working folder as **`csr_vms.db`** (configured in `app/__init__.py` as `sqlite:///csr_vms.db`).  
 You will see it appear after you start the server and load any page (e.g., the login page). If you run the app from a different folder, the DB will be created **in that folder**.
 
-## Quick Start
+HOW TO RUN THE APP:  
 
-```bash
-# create a virtualenv
+Open two terminals on Visual Studio Code
+
+Terminal 1:
+```
+# (1) create a virtualenv
 py -3.13 -m venv .venv
 
-# Windows
+# (2) Activate virtualenv 
 .\.venv\Scripts\Activate.ps1
 
-# install deps
+# (3) install deps
 pip install -r requirements.txt
 
-# run
+# (4) run
 python app.py
-# open http://127.0.0.1:5000/
+
+# open http://127.0.0.1:5000/ 
 ```
+
+Terminal 2:
+```
+# (1) create a virtualenv
+py -3.13 -m venv .venv
+
+# (2) Activate virtualenv 
+.\.venv\Scripts\Activate.ps1
+
+# (3) Seed test data
+python tools/seed_test_data.py
+
+# This will add 100 data to the database
+```
+
+To gain access to each roles, use the following demo accounts:
 
 ### Demo Logins
 - User Admin — `user_admin1 / user_admin1!`
@@ -37,113 +62,34 @@ On first run the app **auto-seeds**:
 ## Project Structure (B-C-E)
 
 ```
-app/
-  boundary/              # BOUNDARY — Flask routes (HTTP/UI)
-    routes.py
-  control/               # CONTROL  — Use-case logic
-    auth_controller.py
-    user_admin_controller.py
-    csr_controller.py
-    pin_controller.py
-    pm_controller.py
-    report_controller.py
-  entity/                # ENTITY   — Data models & persistence
-    models.py
-  templates/             # BOUNDARY — Jinja2 templates (UI)
-  static/css/            # BOUNDARY — Styles (your palette & layout)
-app.py                   # BOUNDARY — WSGI entry point
-requirements.txt
-README.md / README.txt
+CSR_VMS_FLASK_BCE/
+├─ app.py                      # App factory + blueprint registration  (Boundary wiring)
+│
+├─ boundary/
+│  └─ routes.py                # Boundary: HTTP routes, session/role checks, navigation
+│
+├─ control/
+│  ├─ auth_controller.py       # Control: Login/Logout orchestration
+│  ├─ csr_controller.py        # Control: CSR use cases
+│  ├─ pin_controller.py        # Control: PIN use cases
+│  ├─ pm_controller.py         # Control: Platform Manager use cases
+│  └─ user_admin_controller.py # Control: User Admin use cases
+│
+├─ entity/
+│  └─ models.py                # Entity: SQLAlchemy models + domain behavior
+│
+├─ templates/                  # Boundary: Jinja pages
+│  ├─ base.html
+│  ├─ login.html
+│  ├─ user_admin.html
+│  ├─ csr_rep.html
+│  ├─ pin.html
+│  └─ pm.html
+│
+├─ static/
+│  └─ css/style.css            # Boundary: global styling
+│
+├─ tools/seed_test_data.py     # One-time seed script
+└─ README.txt
+
 ```
-
-## How the App Works (per role)
-
-### User Admin
-- Login/Logout.
-- **Search/List/Create/Update/Suspend** users.
-- **Create/Update/Search** user profiles.
-- UI: `Admin → Users & Profiles` table with inline update forms and search bar.
-
-### CSR Representative
-- Login/Logout.
-- View PIN requests (auto-increments **views**), **filter by category**.
-- Save requests to **Shortlist**.
-- View **History** of completed services with **category + date range** filters.
-
-### Person-In-Need (PIN)
-- Login/Logout.
-- **Create/View/Update/Delete/Search** own requests.
-- See **views** and **shortlist** counters.
-- View **Completed Matches** history with filters.
-
-### Platform Manager
-- Login/Logout.
-- **Create/View/Update/Delete/Search** service **categories**.
-- **Reports:** Daily / Weekly / Monthly aggregates for requests & completed services.
-
-## Styling / UI
-- Font: Canva Sans fallback (`font-family: 'Canva Sans', Arial, sans-serif`).
-- Colors: `--red:#ff2828; --yellow:#ffa51f; --dark-blue:#004aad; --light-blue:#c2e9ff; --green:#00bf63`.
-- Layout mirrors your Login and User Admin design language (top bar, left menu, light-blue content area, bold headers, rounded cards).
-
-## Notes
-- DB URI: `sqlite:///csr_vms.db` (relative to **current working directory**).
-- If you want the DB inside a specific folder, run the app from that folder, or change the URI to an absolute path.
-- The code is annotated with **BOUNDARY/CONTROL/ENTITY** comments to meet BCE requirements.
-
-
-
-GITHUB repo:
-
-Below are the codes to update the entire project folder in the repo.
-
-cd "C:\Users\dhano\OneDrive\Desktop\csit314\csr_vms_flask_bce"
-git init
-git add -A
-git commit -m "feat: Flask BCE app (login UI + modules)"
-
-git branch -M main
-git remote add origin https://github.com/dhanoosh2410/CSIT314-MindForge-_csr-vms.git
-git push -u origin main --force
-
-
-Below are the code to update the repo's files according to the changes made in the local project folder
-
-# 1) Go to your project folder
-cd "C:\Users\dhano\OneDrive\Desktop\csit314\csr_vms_flask_bce"
-
-# 2) (One-time) set your identity
-git config --global user.name "Your Name"
-git config --global user.email "you@example.com"
-
-# 3) Make sure the remote is set to your repo
-git remote -v
-# If you don't see origin, add it:
-git remote add origin https://github.com/dhanoosh2410/CSIT314-MindForge-_csr-vms.git
-
-# 4) See changes
-git status
-
-# 5) Stage & commit
-git add -A
-git commit -m "Update: login UI + merged module templates + CSS"
-
-# 6) Pull latest (rebase keeps history clean)
-git pull --rebase origin main   # use 'master' if your default branch is master
-
-# 7) Push
-git push origin main
-
-Below are code to pull the updates from github:
-
-git remote -v
-You should see something like:
-origin  https://github.com/dhanoosh2410/CSIT314-MindForge-_csr-vms.git (fetch)
-origin  https://github.com/dhanoosh2410/CSIT314-MindForge-_csr-vms.git (push)
-
-git fetch origin
-
-git checkout main
-git pull origin main
-
-git status
