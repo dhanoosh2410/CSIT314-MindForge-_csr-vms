@@ -148,23 +148,30 @@ class UserProfile(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(80), unique=True, nullable=False)
+    # human readable description for the profile/role
+    description = db.Column(db.Text, nullable=True)
     is_active = db.Column(db.Boolean, default=True)
 
     @classmethod
-    def create_profile(cls, name: str, active: bool = True):
+    def create_profile(cls, name: str, active: bool = True, description: str = None):
         if cls.query.filter_by(name=name).first():
             return False, "Profile exists."
         p = cls(name=(name or '').strip(), is_active=bool(active))
+        # store a trimmed description when provided
+        p.description = (description or '').strip() if description is not None else None
         db.session.add(p)
         db.session.commit()
         return True, "Profile created."
 
     @classmethod
-    def update_profile(cls, profile_id: int, name: str, active=None):
+    def update_profile(cls, profile_id: int, name: str, active=None, description: str = None):
         p = cls.query.get(profile_id)
         if not p:
             return False, "Profile not found."
         p.name = (name or '').strip()
+        # update description if provided (None means leave unchanged)
+        if description is not None:
+            p.description = (description or '').strip()
         if active is not None:
             if isinstance(active, str):
                 p.is_active = active.lower() in ('on', 'true', '1')

@@ -148,6 +148,11 @@
               <input type="text" id="full_name" name="full_name" placeholder="Enter full name" required/>
             </div>
 
+            <div id="description_wrap">
+              <label>Description</label>
+              <textarea id="description" name="description" placeholder="Optional description for the profile/role" style="min-height:80px;border:1px solid #000;border-radius:10px;padding:12px;font-size:16px"></textarea>
+            </div>
+
             <div id="account_fields">
               <label>Email</label>
               <input type="email" id="email" name="email" placeholder="Enter email" />
@@ -174,6 +179,7 @@
             const userType = document.getElementById('user_type');
             const roleWrap = document.getElementById('role_wrap');
             const fullName = document.getElementById('full_name');
+            const descriptionWrap = document.getElementById('description_wrap');
             const accountFields = document.getElementById('account_fields');
             const email = document.getElementById('email');
             const phone = document.getElementById('phone');
@@ -181,17 +187,19 @@
             const password = document.getElementById('password');
 
             function setProfileMode(){
-              roleWrap.style.display = 'none';
-              accountFields.style.display = 'none';
-              fullName.required = true;
-              email.required = false; phone.required = false; username.required = false; password.required = false;
+              if (roleWrap) roleWrap.style.display = 'none';
+              if (accountFields) accountFields.style.display = 'none';
+              if (descriptionWrap) descriptionWrap.style.display = ''; // show description for profile creation
+              if (fullName) fullName.required = true;
+              if (email) email.required = false; if (phone) phone.required = false; if (username) username.required = false; if (password) password.required = false;
             }
 
             function setAccountMode(){
-              roleWrap.style.display = '';
-              accountFields.style.display = '';
-              fullName.required = true;
-              email.required = false; phone.required = false; username.required = false; password.required = false;
+              if (roleWrap) roleWrap.style.display = '';
+              if (accountFields) accountFields.style.display = '';
+              if (descriptionWrap) descriptionWrap.style.display = 'none'; // hide description when creating an account
+              if (fullName) fullName.required = true;
+              if (email) email.required = false; if (phone) phone.required = false; if (username) username.required = false; if (password) password.required = false;
             }
 
             if(userType){
@@ -392,6 +400,8 @@
           <form method="post" action="{{ url_for('boundary.admin_update_profile', profile_id=profile.id) }}">
             <label>Name</label>
             <input type="text" name="full_name" value="{{ profile.name }}" placeholder="Enter role name" required/>
+            <label>Description</label>
+            <textarea name="description" placeholder="Optional description for the profile/role" style="min-height:80px;border:1px solid #000;border-radius:10px;padding:12px;font-size:16px">{{ profile.description or '' }}</textarea>
             <label>Status</label>
             <select name="active">
               <option value="True" {{ 'selected' if profile.is_active else '' }}>Active</option>
@@ -431,6 +441,9 @@
         <div class="row">
           <label>Name</label>
           <div style="padding:12px;border:1px solid #000;border-radius:8px;background:#fff">{{ profile.name }}</div>
+
+          <label>Description</label>
+          <div style="padding:12px;border:1px solid #000;border-radius:8px;background:#fff">{{ profile.description or '-' }}</div>
 
           <label>Status</label>
           <div style="padding:12px;border:1px solid #000;border-radius:8px;background:#fff">{% if profile.is_active %}<span class="status-active">Active</span>{% else %}<span class="status-suspended">Suspended</span>{% endif %}</div>

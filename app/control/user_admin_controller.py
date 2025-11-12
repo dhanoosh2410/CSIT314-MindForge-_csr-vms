@@ -33,8 +33,8 @@ class UserAdminController:
         UserAccount.activate_user(user_id)
     
     @staticmethod
-    def create_profile(name, active=True):
-        return UserProfile.create_profile(name, active)
+    def create_profile(name, active=True, description: str = None):
+        return UserProfile.create_profile(name, active, description)
 
     @staticmethod
     def get_active_profiles():
@@ -45,8 +45,8 @@ class UserAdminController:
         return UserProfile.get_by_id(profile_id)
 
     @staticmethod
-    def update_profile(profile_id, name, active=None):
-        return UserProfile.update_profile(profile_id, name, active)
+    def update_profile(profile_id, name, active=None, description: str = None):
+        return UserProfile.update_profile(profile_id, name, active, description)
 
     @staticmethod
     def suspend_profile(profile_id):

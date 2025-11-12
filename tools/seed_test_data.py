@@ -37,7 +37,14 @@ def ensure_profiles():
     for n in names:
         p = models.UserProfile.query.filter_by(name=n).first()
         if not p:
-            p = models.UserProfile(name=n, is_active=True)
+            # add a short canonical description for seeded profiles
+            desc_map = {
+                'User Admin': 'Administrative user who manages accounts and profiles.',
+                'CSR Representative': 'Customer service representative who manages requests.',
+                'Person in Need': 'End-user who creates requests for assistance.',
+                'Platform Manager': 'Manages categories and platform-level reports.'
+            }
+            p = models.UserProfile(name=n, is_active=True, description=desc_map.get(n))
             models.db.session.add(p)
             created += 1
     models.db.session.commit()

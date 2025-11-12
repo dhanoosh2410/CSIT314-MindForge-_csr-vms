@@ -94,7 +94,8 @@ def admin_create_user():
     if user_type == 'profile':
         # create a role/profile (name supplied in full_name field)
         name = (request.form.get('full_name') or '').strip()
-        ok, msg = UserAdminController.create_profile(name=name, active=True)
+        description = request.form.get('description')
+        ok, msg = UserAdminController.create_profile(name=name, active=True, description=description)
         flash(msg)
         return redirect(url_for('boundary.admin_users', type='profiles'))
     # otherwise create a user account
@@ -217,10 +218,12 @@ def admin_view_profile(profile_id):
 @boundary_bp.route('/admin/profiles/<int:profile_id>/update', methods=['POST'])
 def admin_update_profile(profile_id):
     AuthController.require_role('User Admin')
+    description = request.form.get('description')
     ok, msg = UserAdminController.update_profile(
         profile_id=profile_id,
         name=request.form.get('full_name'),
         active=request.form.get('active'),
+        description=description,
     )
     flash(msg)
     return redirect(url_for('boundary.admin_users', type='profiles'))
