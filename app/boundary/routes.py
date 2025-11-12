@@ -477,46 +477,61 @@ def pin_history():
     items = PINController.history(category_id=category_id, start=start, end=end, q=q)
     return render_template('pin.html', view='history', categories=categories, items=items, category_id=category_id, start=start, end=end, q=q)
 
-
 # ---------- Platform Manager ----------
 @boundary_bp.route('/pm')
 def pm_dashboard():
     AuthController.require_role('Platform Manager')
     q = request.args.get('q','').strip()
-    if q:
-        categories = PMController.search_categories(q)
-    else:
-        categories = PMController.get_categories()
-    return render_template('pm.html', view='dashboard', categories=categories, q=q)
-
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 12, type=int)
+    # unified path: use paginated categories (ascending by name)
+    pag = PMController.get_categories_paginated(q=q, page=page, per_page=per_page, order='asc')
+    return render_template(
+        'pm.html',
+        view='dashboard',
+        categories=pag['items'],
+        q=q,
+        page=pag['page'],
+        per_page=pag['per_page'],
+        total=pag['total'],
+        pages=pag['pages'],
+    )
 
 @boundary_bp.route('/pm/category/create', methods=['POST'])
 def pm_create_cat():
     AuthController.require_role('Platform Manager')
     PMController.create_category(request.form.get('name'))
     flash('Category created.')
-    return redirect(url_for('boundary.pm_dashboard'))
-
+    # preserve q/page if present
+    return redirect(url_for('boundary.pm_dashboard', q=request.args.get('q'), page=request.args.get('page'), per_page=request.args.get('per_page')))
 
 @boundary_bp.route('/pm/category/<int:cat_id>/update', methods=['POST'])
 def pm_update_cat(cat_id):
     AuthController.require_role('Platform Manager')
     PMController.update_category(cat_id, request.form.get('name'))
     flash('Category updated.')
-    return redirect(url_for('boundary.pm_dashboard'))
-
+    return redirect(url_for('boundary.pm_dashboard', q=request.args.get('q'), page=request.args.get('page'), per_page=request.args.get('per_page')))
 
 @boundary_bp.route('/pm/category/<int:cat_id>/delete', methods=['POST'])
 def pm_delete_cat(cat_id):
     AuthController.require_role('Platform Manager')
     PMController.delete_category(cat_id)
     flash('Category deleted.')
-    return redirect(url_for('boundary.pm_dashboard'))
-
+    return redirect(url_for('boundary.pm_dashboard', q=request.args.get('q'), page=request.args.get('page'), per_page=request.args.get('per_page')))
 
 @boundary_bp.route('/pm/reports')
 def pm_reports():
     AuthController.require_role('Platform Manager')
     scope = request.args.get('scope', 'daily')
-    data = PMController.generate_report(scope)
-    return render_template('pm.html', view='reports', scope=scope, data=data)
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 20, type=int)
+    data = PMController.generate_report(scope, page=page, per_page=per_page, order='asc')
+    return render_template(
+        'pm.html',
+        view='reports',
+        scope=scope,
+        data=data,
+        page=data['page'],
+        pages=data['pages'],
+        per_page=data['per_page']
+    )

@@ -284,7 +284,23 @@ class Category(db.Model):
         db.session.delete(c)
         db.session.commit()
         return True, "Category deleted."
-
+    
+    @classmethod
+    def paginate(cls, q: str = "", page: int = 1, per_page: int = 12, order: str = "asc"):
+        query = cls.query
+        if q:
+            like = f"%{q}%"
+            query = query.filter(cls.name.like(like))
+        # OLD: query = query.order_by(cls.name.desc() if order == "desc" else cls.name.asc())
+        query = query.order_by(cls.id.desc() if order == "desc" else cls.id.asc())
+        pag = query.paginate(page=page, per_page=per_page, error_out=False)
+        return {
+            "items": pag.items,
+            "total": pag.total,
+            "page": pag.page,
+            "per_page": pag.per_page,
+            "pages": pag.pages,
+        }
 
 # =========================
 # Entity: Request (+ helpers)
@@ -579,11 +595,8 @@ class ServiceHistory(db.Model):
 
     # ------- Reports -------
     @staticmethod
-    def generate_report(scope='daily'):
-        """
-        Aggregate counts of requests created and services completed
-        grouped by day/week/month, using SQLite's strftime pattern.
-        """
+    def generate_report(scope='daily', page: int = 1, per_page: int = 20, order: str = 'asc'):
+        """Return paginated buckets for requests-created and services-completed."""
         if scope == 'weekly':
             fmt = '%Y-W%W'
         elif scope == 'monthly':
@@ -591,27 +604,42 @@ class ServiceHistory(db.Model):
         else:
             fmt = '%Y-%m-%d'
 
-        # Requests created per bucket
+        # Aggregate
         reqs = (
-            db.session.query(
-                func.strftime(fmt, Request.created_at),
-                func.count(Request.id)
-            )
+            db.session.query(func.strftime(fmt, Request.created_at), func.count(Request.id))
             .group_by(func.strftime(fmt, Request.created_at))
+            .order_by(func.strftime(fmt, Request.created_at).desc() if order == 'desc'
+                      else func.strftime(fmt, Request.created_at))
             .all()
         )
-
-        # Completed services per bucket
         done = (
-            db.session.query(
-                func.strftime(fmt, ServiceHistory.date_completed),
-                func.count(ServiceHistory.id)
-            )
+            db.session.query(func.strftime(fmt, ServiceHistory.date_completed), func.count(ServiceHistory.id))
             .group_by(func.strftime(fmt, ServiceHistory.date_completed))
+            .order_by(func.strftime(fmt, ServiceHistory.date_completed).desc() if order == 'desc'
+                      else func.strftime(fmt, ServiceHistory.date_completed))
             .all()
         )
 
-        return {'requests': reqs, 'completed': done}
+        # Unified pagination window (same page applied to both tables)
+        total_buckets = max(len(reqs), len(done))
+        pages = max(1, (total_buckets + per_page - 1) // per_page)
+        page = max(1, min(page, pages))
+        start, end = (page - 1) * per_page, (page - 1) * per_page + per_page
+
+        return {
+            "requests": reqs[start:end],
+            "completed": done[start:end],
+            "total": total_buckets,
+            "pages": pages,
+            "page": page,
+            "per_page": per_page,
+            # totals across all buckets (records)
+            "total_requests": sum(c for _, c in reqs),
+            "total_completed": sum(c for _, c in done),
+            # NEW: bucket counts for the selected scope
+            "bucket_count_requests": len(reqs),
+            "bucket_count_completed": len(done),
+            }
 
 
 # =========================

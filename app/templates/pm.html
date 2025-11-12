@@ -37,6 +37,7 @@
     .btn-green{background:#00bf63;color:#fff}
     .btn-outline{background:#fff;color:#000}
     .actions{display:flex;gap:10px;align-items:center}
+    .actions-inline{display:flex;gap:10px;align-items:center}
     .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
     .card{background:#fff;border:1px solid #000;border-radius:12px;padding:16px}
     .card h4{margin:0 0 10px 0}
@@ -44,7 +45,7 @@
     .tablewrap{margin-top:14px;background:#fff;border:1px solid #000;border-radius:12px;overflow:hidden}
     table{width:100%;border-collapse:separate;border-spacing:0;font-size:16px}
     thead{background:#0a4aa9;color:#fff}
-    th,td{padding:12px 14px;border-bottom:1px solid #d5e6f7;border-right:1px solid #d5e6f7}
+    th,td{padding:12px 14px;border-bottom:1px solid #d5e6f7;border-right:1px solid #d5e6f7;vertical-align:middle}
     th:last-child,td:last-child{border-right:none}
     .pill{display:inline-block;padding:6px 10px;border:1px solid #000;border-radius:999px;background:#fff}
     .kpi{display:flex;align-items:center;gap:10px;font-weight:800}
@@ -52,6 +53,10 @@
     .filters{display:flex;gap:10px;align-items:center;margin:0 0 10px 0}
     .filters .grow{flex:1}
     .note{font-size:14px;opacity:.8}
+    /* Pagination */
+    .pagination{display:flex;justify-content:center;gap:6px;margin:12px 0}
+    .pagination a,.pagination span{border:1px solid #000;border-radius:8px;padding:6px 10px;text-decoration:none;color:#000;background:#fff}
+    .pagination .active{background:#0f4fb4;color:#fff}
   </style>
 </head>
 <body>
@@ -83,10 +88,11 @@
         <div class="row card">
           <form class="filters" method="get" action="{{ url_for('boundary.pm_dashboard') }}">
             <div class="grow"><input type="text" name="q" value="{{ q }}" placeholder="Search categories"/></div>
+            <input type="hidden" name="per_page" value="{{ per_page or 12 }}"/>
             <button class="btn btn-blue" type="submit">Search</button>
           </form>
 
-          <form method="post" action="{{ url_for('boundary.pm_create_cat') }}" style="margin-top:8px">
+          <form method="post" action="{{ url_for('boundary.pm_create_cat', q=q, page=page, per_page=per_page) }}" style="margin-top:8px">
             <label>New Category</label>
             <div class="actions">
               <input type="text" name="name" placeholder="e.g. Medical Escort" required/>
@@ -98,22 +104,26 @@
         <div class="row tablewrap" style="margin-top:16px">
           <table>
             <thead>
-              <tr><th style="width:80px">ID</th><th>Name</th><th style="width:240px">Actions</th></tr>
+              <tr><th style="width:80px">ID</th><th>Name</th><th style="width:260px">Actions</th></tr>
             </thead>
             <tbody>
               {% for c in categories %}
               <tr>
                 <td>{{ c.id }}</td>
                 <td>
-                  <form method="post" action="{{ url_for('boundary.pm_update_cat', cat_id=c.id) }}" class="actions" style="gap:8px">
-                    <input type="text" name="name" value="{{ c.name }}" required/>
-                    <button class="btn btn-yellow" type="submit">Update</button>
-                  </form>
+                  <!-- Input sits in Name column; submitted with the Update form in Actions via form attribute -->
+                  <input type="text" name="name" value="{{ c.name }}" form="update-{{ c.id }}" required/>
                 </td>
                 <td>
-                  <form method="post" action="{{ url_for('boundary.pm_delete_cat', cat_id=c.id) }}" onsubmit="return confirm('Delete category {{ c.name }}?');">
-                    <button class="btn btn-red" type="submit">Delete</button>
-                  </form>
+                  <div class="actions-inline">
+                    <form id="update-{{ c.id }}" method="post" action="{{ url_for('boundary.pm_update_cat', cat_id=c.id, q=q, page=page, per_page=per_page) }}">
+                      <button class="btn btn-yellow" type="submit">Update</button>
+                    </form>
+                    <form method="post" action="{{ url_for('boundary.pm_delete_cat', cat_id=c.id, q=q, page=page, per_page=per_page) }}"
+                          onsubmit="return confirm('Delete category {{ c.name }}?');">
+                      <button class="btn btn-red" type="submit">Delete</button>
+                    </form>
+                  </div>
                 </td>
               </tr>
               {% endfor %}
@@ -123,6 +133,21 @@
             </tbody>
           </table>
         </div>
+
+        <!-- Pagination for categories -->
+        {% if pages and pages > 1 %}
+        <div class="row">
+          <div class="pagination">
+            {% for p in range(1, pages+1) %}
+              {% if p == (page or 1) %}
+                <span class="active">{{ p }}</span>
+              {% else %}
+                <a href="{{ url_for('boundary.pm_dashboard', q=q, page=p, per_page=per_page) }}">{{ p }}</a>
+              {% endif %}
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
 
       {% elif view == 'reports' %}
         <h1 class="title">PLATFORM REPORTS</h1>
@@ -137,26 +162,28 @@
                 <option value="weekly" {{ 'selected' if scope=='weekly' else '' }}>Weekly</option>
                 <option value="monthly" {{ 'selected' if scope=='monthly' else '' }}>Monthly</option>
               </select>
+              <input type="hidden" name="per_page" value="{{ per_page or 20 }}"/>
               <button class="btn btn-blue" type="submit">Generate</button>
               <span class="pill">Current: {{ scope|capitalize }}</span>
             </div>
-            <div class="note">Counts are grouped by the selected bucket (day/week/month). Data comes from Requests and Service History. </div>
+            <div class="note">Counts are grouped by the selected bucket (day/week/month). Data comes from Requests and Service History.</div>
           </form>
         </div>
 
-        <!-- KPIs -->
-        {% set total_reqs = (data.requests | sum(attribute=1)) if data and data.requests else 0 %}
-        {% set total_done = (data.completed | sum(attribute=1)) if data and data.completed else 0 %}
+        <!-- Page KPIs (totals for current page window) -->
+        {% set total_created = data.total_requests or 0 %}
+        {% set total_completed = data.total_completed or 0 %}
         <div class="row grid" style="margin-top:16px">
           <div class="card">
-            <div class="kpi"><span class="big">{{ total_reqs }}</span> <span>Requests Created</span></div>
-            <div class="note">Total number of requests created in the selected scope.</div>
+            <div class="kpi"><span class="big">{{ total_created }}</span> <span>Total Created Requests</span></div>
+            <div class="note">All {{ scope }} buckets (entire dataset).</div>
           </div>
           <div class="card">
-            <div class="kpi"><span class="big">{{ total_done }}</span> <span>Services Completed</span></div>
-            <div class="note">Total completed services (from Service History) in the selected scope.</div>
+            <div class="kpi"><span class="big">{{ total_completed }}</span> <span>Total Completed Requests</span></div>
+            <div class="note">All {{ scope }} buckets (entire dataset).</div>
           </div>
         </div>
+
 
         <!-- Tables -->
         <div class="row grid" style="margin-top:16px">
@@ -195,15 +222,43 @@
           </div>
         </div>
 
-        <!-- Simple narrative summary -->
+        <!-- Reports pagination -->
+        {% if pages and pages > 1 %}
+        <div class="row">
+          <div class="pagination">
+            {% for p in range(1, pages+1) %}
+              {% if p == (page or 1) %}
+                <span class="active">{{ p }}</span>
+              {% else %}
+                <a href="{{ url_for('boundary.pm_reports', scope=scope, page=p, per_page=per_page) }}">{{ p }}</a>
+              {% endif %}
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+
+        <!-- Narrative summary: page window + overall -->
+        {% set total_created   = data.total_requests   or 0 %}
+        {% set total_completed = data.total_completed  or 0 %}
+        {% set bucket_req      = data.bucket_count_requests   or 0 %}
+        {% set bucket_done     = data.bucket_count_completed  or 0 %}
+        {% set scopeLabel = {'daily':'Daily','weekly':'Weekly','monthly':'Monthly'}[scope] %}
         <div class="row card" style="margin-top:16px">
-          <h4>Summary</h4>
+          <h4>{{ scopeLabel }} Report — Summary</h4>
           <p>
-            In the selected <strong>{{ scope }}</strong> view, the platform received
-            <strong>{{ total_reqs }}</strong> request{{ '' if total_reqs==1 else 's' }} and completed
-            <strong>{{ total_done }}</strong> service{{ '' if total_done==1 else 's' }}.
+            Total Created Requests: <strong>{{ total_created }}</strong>
+            &nbsp;•&nbsp;
+            Total Completed Requests: <strong>{{ total_completed }}</strong>
           </p>
-          <p class="note">Tip: switch scope to Weekly or Monthly to see trends smooth out.</p>
+          <p class="note">
+            This view groups the same records into <strong>{{ scopeLabel.lower() }}</strong> buckets:
+            <strong>{{ bucket_req }}</strong> {{ scopeLabel.lower() }} buckets for requests and
+            <strong>{{ bucket_done }}</strong> {{ scopeLabel.lower() }} buckets for completions.
+          </p>
+          <p class="note">
+            You’re browsing bucket page <strong>{{ page }}</strong> of <strong>{{ pages }}</strong>.
+            Pagination changes which buckets you see; totals remain the dataset totals.
+          </p>
         </div>
 
       {% endif %}
