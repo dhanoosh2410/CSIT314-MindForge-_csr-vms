@@ -10,7 +10,7 @@ class UserAdminController:
         if (user_type or '').lower() == 'profiles':
             return UserProfile.search_profiles(q=q or "", page=page, per_page=per_page)
         # default to the fixed four accounts list
-        return UserAccount.search_accounts_fixed_four(q=q or "", page=page, per_page=per_page)
+        return UserAccount.search_user_account(q=q or "", page=page, per_page=per_page)
 
     @staticmethod
     def create_user_account(first_name, last_name, email, phone, username, password, profile_name: str = None):
@@ -33,20 +33,20 @@ class UserAdminController:
         UserAccount.activate_user(user_id)
     
     @staticmethod
-    def create_profile(name, active=True):
-        return UserProfile.create_profile(name, active)
+    def create_profile(name, active=True, description: str = None):
+        return UserProfile.create_profile(name, active, description)
 
     @staticmethod
     def get_active_profiles():
-        return UserProfile.query.filter_by(is_active=True).order_by(UserProfile.name).all()
+        return UserProfile.get_active_profiles()
 
     @staticmethod
     def get_profile_by_id(profile_id):
-        return UserProfile.query.get(profile_id)
+        return UserProfile.get_by_id(profile_id)
 
     @staticmethod
-    def update_profile(profile_id, name, active=None):
-        return UserProfile.update_profile(profile_id, name, active)
+    def update_profile(profile_id, name, active=None, description: str = None):
+        return UserProfile.update_profile(profile_id, name, active, description)
 
     @staticmethod
     def suspend_profile(profile_id):

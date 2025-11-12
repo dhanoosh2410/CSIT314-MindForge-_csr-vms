@@ -37,7 +37,14 @@ def ensure_profiles():
     for n in names:
         p = models.UserProfile.query.filter_by(name=n).first()
         if not p:
-            p = models.UserProfile(name=n, is_active=True)
+            # add a short canonical description for seeded profiles
+            desc_map = {
+                'User Admin': 'Administrative user who manages accounts and profiles.',
+                'CSR Representative': 'Customer service representative who manages requests.',
+                'Person in Need': 'End-user who creates requests for assistance.',
+                'Platform Manager': 'Manages categories and platform-level reports.'
+            }
+            p = models.UserProfile(name=n, is_active=True, description=desc_map.get(n))
             models.db.session.add(p)
             created += 1
     models.db.session.commit()
@@ -46,13 +53,13 @@ def ensure_profiles():
 
 def ensure_categories(target=COUNT):
     # create categories named Test Category 1..N until we have target count
-    existing = models.Category.query.filter(models.Category.name.like('SeedCat %')).all()
+    existing = models.Category.query.filter(models.Category.name.like('Category %')).all()
     existing_names = {c.name for c in existing}
     to_create = target - len(existing)
     created = 0
     idx = 1
     while created < to_create:
-        name = f"SeedCat {idx}"
+        name = f"Category {idx}"
         idx += 1
         if name in existing_names or models.Category.query.filter_by(name=name).first():
             continue
@@ -79,12 +86,12 @@ def ensure_useraccounts(target=COUNT):
     while created < to_create:
         rn = role_names[i % len(role_names)]
         i += 1
-        uname = f"seed_user_{created+1}_{rn.replace(' ','_')[:10]}"
+        uname = f"user_account_{created+1}_{rn.replace(' ','_')[:10]}"
         if models.UserAccount.query.filter_by(username=uname).first():
             created += 1
             continue
         prof = profiles[rn]
-        u = models.UserAccount(profile_id=prof.id, username=uname, first_name=rn.split()[0], last_name=f"Seed{created+1}", is_active=True)
+        u = models.UserAccount(profile_id=prof.id, username=uname, first_name=rn.split()[0], last_name=f"UserAccount{created+1}", is_active=True)
         u.set_password('password')
         models.db.session.add(u)
         created += 1
@@ -106,7 +113,7 @@ def ensure_requests(target=COUNT):
     if not cats:
         raise RuntimeError('No categories available')
 
-    existing = models.Request.query.filter(models.Request.title.like('Seed Request%')).count()
+    existing = models.Request.query.filter(models.Request.title.like('Request%')).count()
     to_create = max(0, target - existing)
     created = 0
     now = datetime.now(timezone.utc)
@@ -114,7 +121,7 @@ def ensure_requests(target=COUNT):
         pin = random.choice(pins)
         cat = random.choice(cats)
         ts = now - timedelta(days=random.randint(0, 30), hours=random.randint(0,23))
-        r = models.Request(pin_id=pin.id, title=f"Seed Request #{existing + created + 1}", description="Auto-generated request", category_id=cat.id, status='open', created_at=ts, updated_at=ts)
+        r = models.Request(pin_id=pin.id, title=f"Request #{existing + created + 1}", description="Auto-generated request", category_id=cat.id, status='open', created_at=ts, updated_at=ts)
         # randomize counters
         r.views_count = random.randint(0, 50)
         r.shortlist_count = 0
