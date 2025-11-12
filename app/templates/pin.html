@@ -1,331 +1,171 @@
-{#
-  This template renders all Person-In-Need (PIN) pages: create, dashboard (list), edit and history.
-  The layout is self‑contained and replicates the visual style of the user admin pages provided in
-  the design mockups.  We include a top bar, a vertical side navigation for the PIN module,
-  and a content area that switches based on the `view` variable supplied by the routes.
-
-  The page uses minimal inline CSS to achieve a consistent look without depending on external
-  stylesheets.  Colours and spacing are derived from the screenshots: a dark blue primary bar,
-  a light blue background for the main content, an orange accent colour for buttons and highlights,
-  and clean tables.
+<!--
+  This template renders all Person-In‑Need (PIN) pages: create, dashboard (list), edit and history.
+  The layout and styling here have been updated to match the look and feel of the
+  administrative pages in this application.  We reuse the same colour palette,
+  top bar, sidebar and table styles defined in the user administration template
+  so that the PIN pages feel cohesive with the rest of the system.  The page
+  still switches its content based on the `view` variable passed in from the
+  controller.
 
   Variables expected in context:
-    - view: str in {"create", "dashboard", "edit", "history"}
+    - view: one of "create", "dashboard", "edit" or "history"
     - categories: list of Category objects (for select options)
     - reqs: list of Request objects when view == "dashboard"
-    - req: a Request object when view == "edit"
-    - history_preview: list of recent ServiceHistory when view == "dashboard" (optional)
+    - req: a single Request object when view == "edit"
     - items: list of ServiceHistory objects when view == "history"
     - page, per_page, pages, q: pagination/search parameters for dashboard
     - category_id, start, end: filter parameters for history
     - next: url to return to after edit form, if supplied
-    - username: optional display name; if absent, a placeholder is used
+    - session: flask session containing username
+-->
 
-  Note: the logout button simply links to the boundary.logout route and does not require
-  a separate form for CSRF protection because it performs a GET request.  If your security
-  requirements mandate POST for logout, wrap it in a form accordingly.
-#}
-
+<!-- The username will be pulled from session at render time; set via Jinja in controller -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>PIN Management</title>
   <style>
     :root {
-      --primary: #0a4ea3;        /* dark blue from the mockups */
-      --primary-dark: #083c7a;
-      --secondary: #d9efff;      /* light blue for page background */
-      --accent: #f5a623;         /* orange for buttons and active menu */
-      --danger: #e74c3c;         /* red for logout */
-      --white: #ffffff;
-      --grey-light: #f6f9fc;
-      --grey-border: #e1e7ef;
+      /* Colours shared with the admin UI */
+      --blue: #004aad;
+      --light: #c2e9ff;
+      --red: #ff2828;
+      --yellow: #ffa51f;
+      --green: #00bf63;
+      --control-h: 48px;
     }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0;font-family:'Canva Sans',Arial,Helvetica,sans-serif;background:var(--light);color:#000}
 
-    /* Reset basic tags */
-    * { box-sizing: border-box; }
-    body { margin: 0; font-family: sans-serif; background: var(--secondary); }
-    a { text-decoration: none; color: inherit; }
-    button { cursor: pointer; }
+    /* Top bar */
+    .topbar{display:flex;align-items:center;justify-content:space-between;background:var(--blue);color:#fff;padding:16px 24px;border-bottom:2px solid #003d8a}
+    .brand{font-size:24px;font-weight:800}
+    .account{display:flex;gap:16px;align-items:center}
+    .who{text-align:right;line-height:1.1}
+    .who .name{display:block;font-size:24px;font-weight:800}
+    .who small{font-weight:700;opacity:.9;text-transform:uppercase}
+    .logout{background:var(--red);color:#fff;text-decoration:none;font-weight:800;padding:8px 18px;border-radius:10px;border:1px solid #000}
 
-    /* Top navigation bar */
-    .pin-topbar {
-      background: var(--primary);
-      color: var(--white);
-      padding: 12px 24px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-    .pin-topbar .title {
-      font-size: 1.4rem;
-      font-weight: 700;
-      letter-spacing: 0.5px;
-    }
-    .pin-topbar .user-section {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-      font-size: 1rem;
-    }
-    .pin-topbar .logout-btn {
-      background: var(--danger);
-      color: var(--white);
-      border: none;
-      border-radius: 4px;
-      padding: 6px 16px;
-      font-size: 0.9rem;
-    }
+    /* Layout */
+    .shell{display:flex;min-height:calc(100vh - 64px)}
+    .sidebar{width:260px;background:var(--blue);color:#fff;padding:26px 22px}
+    .sidebar h3{margin:0 0 18px 0;font-size:20px;font-weight:800}
+    .navlink{display:block;color:#fff;text-decoration:none;margin:14px 0;font-size:18px;font-weight:700}
+    .navlink.active{color:var(--yellow)}
+    .main{flex:1;background:var(--light);padding:34px}
+    .title{font-size:32px;font-weight:800;margin:4px 0 18px 0;text-align:center;text-transform:uppercase}
 
-    /* Layout: sidebar + content */
-    .pin-layout {
-      display: flex;
-      min-height: calc(100vh - 56px); /* subtract topbar height */
-    }
-    .pin-sidebar {
-      width: 260px;
-      background: var(--primary);
-      color: var(--white);
-      padding: 24px 16px;
-      display: flex;
-      flex-direction: column;
-    }
-    .pin-sidebar h3 {
-      margin: 0 0 16px;
-      font-size: 1.2rem;
-      font-weight: 700;
-    }
-    .pin-sidebar nav a {
-      display: block;
-      padding: 10px 12px;
-      margin-bottom: 4px;
-      font-size: 1.05rem;
-      color: var(--white);
-      border-left: 4px solid transparent;
-      transition: background 0.2s, color 0.2s;
-    }
-    .pin-sidebar nav a:hover {
-      background: var(--primary-dark);
-    }
-    .pin-sidebar nav a.active {
-      color: var(--accent);
-      border-left-color: var(--accent);
-      font-weight: 600;
-    }
+    /* Form elements */
+    label{display:block;font-weight:800;font-size:20px;margin:14px 0 6px}
+    select,input,textarea{width:100%;padding:14px;border:1px solid #000;border-radius:10px;background:#fff;font-size:18px}
+    textarea{resize:vertical;min-height:100px}
+    .row{max-width:780px;margin:0 auto}
 
-    /* Main content area */
-    .pin-content {
-      flex: 1;
-      padding: 32px;
-      background: var(--secondary);
-    }
-    .pin-content h1 {
-      margin-top: 0;
-      margin-bottom: 20px;
-      font-size: 2rem;
-      color: var(--primary);
-      text-align: center;
-      font-weight: 700;
-    }
+    .btn{display:inline-block;border:1.5px solid #000;border-radius:10px;font-weight:800;padding:14px 28px;cursor:pointer;text-align:center;text-decoration:none}
+    .btn-yellow{background:var(--yellow);color:#fff}
+    .btn-orange{background:var(--yellow);color:#000;border:1px solid #000;border-radius:14px;font-weight:800;padding:10px 22px}
+    .btn-red{background:var(--red);color:#fff}
+    .btn-green{background:var(--green);color:#fff}
+    .btn-blue{background:#0f4fb4;color:#fff}
 
-    /* Forms */
-    .form-group {
-      margin-bottom: 16px;
-    }
-    .form-group label {
-      display: block;
-      margin-bottom: 4px;
-      font-weight: 600;
-    }
-    .form-group input,
-    .form-group textarea,
-    .form-group select {
-      width: 100%;
-      padding: 10px;
-      border: 1px solid var(--grey-border);
-      border-radius: 6px;
-      font-size: 1rem;
-      background: var(--white);
-    }
-    .form-row {
-      display: flex;
-      gap: 12px;
-    }
-    .form-row .form-group {
-      flex: 1;
-    }
-    .btn-submit {
-      background: var(--accent);
-      color: var(--white);
-      border: none;
-      border-radius: 6px;
-      padding: 10px 24px;
-      font-size: 1rem;
-    }
-    .btn-cancel {
-      background: var(--grey-border);
-      color: var(--primary);
-      border: none;
-      border-radius: 6px;
-      padding: 10px 24px;
-      font-size: 1rem;
-    }
+    /* Action helper */
+    .actions-col{max-width:780px;margin:18px auto 0;display:flex;flex-direction:column;gap:14px}
+    .btn-block{width:100%;height:56px;font-size:18px;border-radius:10px}
 
-    /* Search bar */
-    .search-bar {
-      display: flex;
-      margin-bottom: 20px;
-      gap: 12px;
-    }
-    .search-bar input[type="text"] {
-      flex: 1;
-      padding: 10px;
-      border: 1px solid var(--grey-border);
-      border-radius: 6px;
-      font-size: 1rem;
-      background: var(--white);
-    }
-    .search-bar button {
-      background: var(--accent);
-      color: var(--white);
-      border: none;
-      border-radius: 6px;
-      padding: 10px 20px;
-      font-size: 1rem;
-    }
+    /* Filters row */
+    .filters{display:flex;gap:16px;align-items:center;justify-content:flex-start;margin:10px auto 14px;max-width:880px;flex-wrap:wrap}
+    .filters .search{flex:1;min-width:180px}
+    .filters .search input{height:var(--control-h);border:1px solid #000;border-radius:14px;padding:0 16px;font-size:18px}
+    .filters .btn-orange{height:var(--control-h);display:inline-flex;align-items:center;justify-content:center;min-width:140px}
+    .select-wrap{position:relative;display:inline-block;min-width:220px}
+    .select-blue{appearance:none;-webkit-appearance:none;-moz-appearance:none;background:#0f4fb4;color:#fff;font-weight:800;height:var(--control-h);padding:0 46px 0 16px;border:1px solid #000;border-radius:18px;font-size:18px;box-shadow:inset 0 0 0 2px rgba(255,255,255,.12)}
+    .select-wrap::after{content:"";position:absolute;right:14px;top:50%;transform:translateY(-50%) rotate(45deg);width:10px;height:10px;border-right:3px solid #fff;border-bottom:3px solid #fff;pointer-events:none}
 
-    /* Tables */
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      background: var(--white);
-      border-radius: 8px;
-      overflow: hidden;
-    }
-    thead {
-      background: var(--primary);
-      color: var(--white);
-    }
-    th, td {
-      padding: 12px 16px;
-      text-align: left;
-      font-size: 0.95rem;
-      border-bottom: 1px solid var(--grey-border);
-    }
-    tbody tr:nth-child(even) {
-      background: var(--grey-light);
-    }
-    .actions-btn {
-      background: var(--accent);
-      color: var(--white);
-      border: none;
-      border-radius: 4px;
-      padding: 6px 12px;
-      font-size: 0.85rem;
-    }
+    /* Table */
+    .tablewrap{max-width:880px;margin:0 auto;background:#fff;border:1px solid #000;border-radius:12px;overflow:hidden}
+    table{width:100%;border-collapse:separate;border-spacing:0;font-size:16px}
+    thead{background:#0a4aa9;color:#fff}
+    th,td{padding:14px 16px;font-size:16px;border-bottom:1px solid #d5e6f7;border-right:1px solid #d5e6f7}
+    th:last-child,td:last-child{border-right:none}
+    th:first-child,td:first-child{width:64px}
+    .actions{text-align:right}
+    .edit-btn{display:inline-block;background:#ffa51f;color:#000;text-decoration:none;padding:10px 22px;border:1px solid #000;border-radius:12px;font-weight:400;box-shadow:0 2px 0 rgba(0,0,0,.25)}
+    .edit-btn:hover,.edit-btn:focus{filter:brightness(.96);text-decoration:none}
 
-    /* Pagination */
-    .pagination {
-      margin-top: 16px;
-      text-align: center;
-    }
-    .pagination a, .pagination span {
-      display: inline-block;
-      padding: 6px 12px;
-      margin: 0 2px;
-      border: 1px solid var(--primary);
-      border-radius: 4px;
-      color: var(--primary);
-      font-size: 0.9rem;
-    }
-    .pagination a:hover {
-      background: var(--primary);
-      color: var(--white);
-    }
-    .pagination .active {
-      background: var(--primary);
-      color: var(--white);
-      pointer-events: none;
-    }
+    /* Pager */
+    .pager{display:flex;gap:8px;align-items:center;justify-content:center;margin:16px 0}
+    .pagebtn{border:1.5px solid #000;border-radius:8px;background:#fff;padding:8px 12px;text-decoration:none;color:#000}
+    .pagebtn.active{background:#1e66e8;color:#fff;border-color:#000}
+    .pagebtn.disabled{background:#f4f4f4;color:#aaa;border-color:#ccc;pointer-events:none}
 
-    /* Responsive adjustments */
-    @media (max-width: 768px) {
-      .pin-layout { flex-direction: column; }
-      .pin-sidebar { width: 100%; height: auto; }
-      .pin-content { padding: 20px; }
-      th, td { white-space: normal; }
-    }
+    /* Flash message hidden element */
+    #flash { display:none; }
   </style>
 </head>
 <body>
-  <!-- Top bar -->
-  <div class="pin-topbar">
-    <div class="title">VOLUNTEER MANAGEMENT SYSTEM</div>
-    <div class="user-section">
-      <div class="user-name">{{ session.get('username', 'Username') }}</div>
-      <div class="user-role">PIN</div>
-      <a href="{{ url_for('boundary.logout') }}" class="logout-btn">LOGOUT</a>
+  <!-- TOP BAR -->
+  <div class="topbar">
+    <div class="brand">VOLUNTEER MANAGEMENT SYSTEM</div>
+    <div class="account">
+      <div class="who">
+        <span class="name">{{ session.get('username','Username') }}</span>
+        <small>PERSON IN NEED</small>
+      </div>
+      <a href="{{ url_for('boundary.logout') }}" class="logout">LOGOUT</a>
     </div>
   </div>
-
-  <!-- Sidebar + Content -->
-  <div class="pin-layout">
-    <!-- Sidebar -->
-    <aside class="pin-sidebar">
+  <div class="shell">
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
       <h3>PIN Management</h3>
-      <nav>
-        <a href="{{ url_for('boundary.pin_new_req') }}" class="{% if view == 'create' %}active{% endif %}">Create new Request</a>
-        <a href="{{ url_for('boundary.pin_dashboard') }}" class="{% if view == 'dashboard' %}active{% endif %}">My Requests</a>
-        <a href="{{ url_for('boundary.pin_history') }}" class="{% if view == 'history' %}active{% endif %}">completed Requests</a>
-      </nav>
+      <a class="navlink {% if view == 'create' %}active{% endif %}" href="{{ url_for('boundary.pin_new_req') }}">Create Request</a>
+      <a class="navlink {% if view == 'dashboard' %}active{% endif %}" href="{{ url_for('boundary.pin_dashboard') }}">My Requests</a>
+      <a class="navlink {% if view == 'history' %}active{% endif %}" href="{{ url_for('boundary.pin_history') }}">Completed Requests</a>
     </aside>
-
-    <!-- Main content -->
-    <main class="pin-content">
-      {# Flash messages -> show as alert for immediate feedback #}
+    <!-- MAIN CONTENT -->
+    <main class="main">
+      {# Flash messages pop up using alert() for immediate feedback #}
       {% with messages = get_flashed_messages() %}
       {% if messages %}
-        <div id="flash" style="display:none">{{ messages|join(' • ') }}</div>
+        <div id="flash">{{ messages|join(' • ') }}</div>
         <script>const f=document.getElementById('flash');if(f&&f.textContent.trim())alert(f.textContent.trim());</script>
       {% endif %}
       {% endwith %}
-      {# CREATE NEW REQUEST #}
+
       {% if view == 'create' %}
-        <h1>Create New Request</h1>
-        <form method="post" action="{{ url_for('boundary.pin_create_req') }}">
-          <div class="form-group">
-            <label for="cat">Category</label>
-            <select id="cat" name="category_id">
+        <h1 class="title">Create New Request</h1>
+        <div class="row">
+          <form method="post" action="{{ url_for('boundary.pin_create_req') }}">
+            <label>Category</label>
+            <select name="category_id" required>
               <option value="" disabled selected>Select category</option>
               {% for c in categories %}
                 <option value="{{ c.id }}">{{ c.name }}</option>
               {% endfor %}
             </select>
-          </div>
-          <div class="form-group">
-            <label for="title">Title</label>
-            <input id="title" name="title" type="text" placeholder="Enter title" required />
-          </div>
-          <div class="form-group">
-            <label for="description">Request</label>
-            <textarea id="description" name="description" rows="5" placeholder="Enter your request in detail"></textarea>
-          </div>
-          <div class="form-group">
-            <button type="submit" class="btn-submit">Create Request</button>
-          </div>
-        </form>
+            <label>Title</label>
+            <input type="text" name="title" placeholder="Enter title" required />
+            <label>Request</label>
+            <textarea name="description" placeholder="Enter your request in detail"></textarea>
+            <div class="actions-col">
+              <button class="btn btn-yellow btn-block" type="submit">Create Request</button>
+            </div>
+          </form>
+        </div>
 
-      {# DASHBOARD (My Requests) #}
       {% elif view == 'dashboard' %}
-        <h1>My Requests</h1>
-        <form method="get" class="search-bar" action="{{ url_for('boundary.pin_dashboard') }}">
-          <input type="text" name="q" value="{{ q }}" placeholder="Search my requests" />
-          <button type="submit">Search</button>
+        <h1 class="title">My Requests</h1>
+        <form class="filters" method="get" action="{{ url_for('boundary.pin_dashboard') }}">
+          <div class="search">
+            <input type="text" name="q" value="{{ q }}" placeholder="Search my requests" />
+          </div>
+          <button class="btn-orange" type="submit">Search</button>
         </form>
         {% if reqs and reqs|length > 0 %}
-          <div class="table-responsive">
+          <div class="tablewrap">
             <table>
               <thead>
                 <tr>
@@ -336,7 +176,7 @@
                   <th>Accepted By</th>
                   <th>Views</th>
                   <th>Shortlisted</th>
-                  <th>Actions</th>
+                  <th class="actions">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -357,12 +197,12 @@
                   </td>
                   <td>{{ r.views_count or 0 }}</td>
                   <td>{{ r.shortlist_count or 0 }}</td>
-                  <td>
-                    <a href="{{ url_for('boundary.pin_edit_req', req_id=r.id, page=page, per_page=per_page, q=q, mode='view') }}" class="actions-btn">View</a>
-                    <a href="{{ url_for('boundary.pin_edit_req', req_id=r.id, page=page, per_page=per_page, q=q) }}" class="actions-btn" style="margin-left:6px; background:#6aa84f;">Edit</a>
-                    <form method="post" action="{{ url_for('boundary.pin_delete_req', req_id=r.id) }}" style="display:inline;" onsubmit="return confirm('Delete this request?');">
+                  <td class="actions">
+                    <a class="edit-btn" href="{{ url_for('boundary.pin_edit_req', req_id=r.id, page=page, per_page=per_page, q=q, mode='view') }}">View</a>
+                    <a class="edit-btn" href="{{ url_for('boundary.pin_edit_req', req_id=r.id, page=page, per_page=per_page, q=q) }}" style="background:#6aa84f;color:#fff;margin-left:6px">Edit</a>
+                    <form method="post" action="{{ url_for('boundary.pin_delete_req', req_id=r.id) }}" style="display:inline;margin-left:4px" onsubmit="return confirm('Delete this request?');">
                       <input type="hidden" name="next" value="{{ url_for('boundary.pin_dashboard', page=page, per_page=per_page, q=q) }}" />
-                      <button type="submit" class="actions-btn" style="margin-left:4px; background: var(--danger);">Delete</button>
+                      <button type="submit" class="edit-btn" style="background:var(--red);color:#fff">Delete</button>
                     </form>
                   </td>
                 </tr>
@@ -370,136 +210,126 @@
               </tbody>
             </table>
           </div>
-          {# Pagination #}
-          <div class="pagination">
-            {% set cur = page or 1 %}
-            {% set last = pages or 1 %}
-            {% if cur > 1 %}
-              <a href="{{ url_for('boundary.pin_dashboard', page=cur-1, per_page=per_page, q=q) }}">Previous</a>
+          {% if pages and pages > 1 %}
+          <div class="pager">
+            {% if page > 1 %}
+              <a class="pagebtn" href="{{ url_for('boundary.pin_dashboard', q=q, page=page-1, per_page=per_page) }}">Previous</a>
             {% else %}
-              <span class="disabled">Previous</span>
+              <span class="pagebtn disabled">Previous</span>
             {% endif %}
-            {% for p in range(1, last+1) %}
-              {% if p == cur %}
-                <span class="active">{{ p }}</span>
+            {% for p in range(1, pages+1) %}
+              {% if p == page %}
+                <span class="pagebtn active">{{ p }}</span>
               {% else %}
-                <a href="{{ url_for('boundary.pin_dashboard', page=p, per_page=per_page, q=q) }}">{{ p }}</a>
+                <a class="pagebtn" href="{{ url_for('boundary.pin_dashboard', q=q, page=p, per_page=per_page) }}">{{ p }}</a>
               {% endif %}
             {% endfor %}
-            {% if cur < last %}
-              <a href="{{ url_for('boundary.pin_dashboard', page=cur+1, per_page=per_page, q=q) }}">Next</a>
+            {% if page < pages %}
+              <a class="pagebtn" href="{{ url_for('boundary.pin_dashboard', q=q, page=page+1, per_page=per_page) }}">Next</a>
             {% else %}
-              <span class="disabled">Next</span>
+              <span class="pagebtn disabled">Next</span>
             {% endif %}
           </div>
+          {% endif %}
         {% else %}
           <p>No requests found. Create your first request using the menu.</p>
         {% endif %}
 
-      {# EDIT REQUEST #}
       {% elif view == 'edit' %}
-        <h1>Update Request</h1>
-        {% if req.accepted_csr %}
-          <div style="margin-bottom:12px; padding:10px; border:1px solid #e1e7ef; border-radius:6px; background:#fff;">
-            <strong>Accepted by:</strong>
-            {% if req.accepted_csr.first_name or req.accepted_csr.last_name %}
-              {{ req.accepted_csr.first_name }} {{ req.accepted_csr.last_name }}
-            {% else %}
-              {{ req.accepted_csr.username }}
-            {% endif %}
-            {% if req.accepted_at %}
-              <span style="color:#666; font-size:0.9rem;"> — {{ req.accepted_at.date() }}</span>
-            {% endif %}
-          </div>
-        {% else %}
-          <div style="margin-bottom:12px; color:#666;">No volunteer has accepted this request yet.</div>
-        {% endif %}
-        <form method="post" action="{{ url_for('boundary.pin_update_req', req_id=req.id) }}">
-          <input type="hidden" name="next" value="{{ next or url_for('boundary.pin_dashboard', page=page, per_page=per_page, q=q) }}" />
-          <input type="hidden" name="page" value="{{ page }}" />
-          <input type="hidden" name="per_page" value="{{ per_page }}" />
-          <input type="hidden" name="q" value="{{ q }}" />
-          <div class="form-group">
-            <label for="cat">Category</label>
+        <h1 class="title">Update Request</h1>
+        <!-- Display information about who accepted the request -->
+        <div class="row">
+          {% if req.accepted_csr %}
+            <div style="margin-bottom:12px; padding:12px; border:1px solid #000; border-radius:10px; background:#fff;">
+              <strong>Accepted by:</strong>
+              {% if req.accepted_csr.first_name or req.accepted_csr.last_name %}
+                {{ req.accepted_csr.first_name }} {{ req.accepted_csr.last_name }}
+              {% else %}
+                {{ req.accepted_csr.username }}
+              {% endif %}
+              {% if req.accepted_at %}
+                <span style="color:#444; font-size:0.9rem;"> — {{ req.accepted_at.date() }}</span>
+              {% endif %}
+            </div>
+          {% else %}
+            <div style="margin-bottom:12px; color:#444;">No volunteer has accepted this request yet.</div>
+          {% endif %}
+          <form method="post" action="{{ url_for('boundary.pin_update_req', req_id=req.id) }}">
+            <input type="hidden" name="next" value="{{ next or url_for('boundary.pin_dashboard', page=page, per_page=per_page, q=q) }}" />
+            <input type="hidden" name="page" value="{{ page }}" />
+            <input type="hidden" name="per_page" value="{{ per_page }}" />
+            <input type="hidden" name="q" value="{{ q }}" />
+            <label>Category</label>
             {% if mode is defined and mode == 'view' %}
-              <div style="padding:10px;border:1px solid var(--grey-border);border-radius:6px;background:#fff;">{{ req.category.name if req.category else '-' }}</div>
+              <div style="padding:12px;border:1px solid #000;border-radius:10px;background:#fff;">{{ req.category.name if req.category else '-' }}</div>
             {% else %}
-              <select id="cat" name="category_id">
+              <select name="category_id">
                 {% for c in categories %}
                   <option value="{{ c.id }}" {% if c.id == req.category_id %}selected{% endif %}>{{ c.name }}</option>
                 {% endfor %}
               </select>
             {% endif %}
-          </div>
-          <div class="form-group">
-            <label for="title">Title</label>
+            <label>Title</label>
             {% if mode is defined and mode == 'view' %}
-              <div style="padding:10px;border:1px solid var(--grey-border);border-radius:6px;background:#fff;">{{ req.title }}</div>
+              <div style="padding:12px;border:1px solid #000;border-radius:10px;background:#fff;">{{ req.title }}</div>
             {% else %}
-              <input id="title" name="title" type="text" value="{{ req.title }}" required />
+              <input type="text" name="title" value="{{ req.title }}" required />
             {% endif %}
-          </div>
-          <div class="form-group">
-            <label for="description">Request</label>
+            <label>Request</label>
             {% if mode is defined and mode == 'view' %}
-              <div style="padding:10px;border:1px solid var(--grey-border);border-radius:6px;background:#fff;white-space:pre-wrap;">{{ req.description }}</div>
+              <div style="padding:12px;border:1px solid #000;border-radius:10px;background:#fff;white-space:pre-wrap;">{{ req.description }}</div>
             {% else %}
-              <textarea id="description" name="description" rows="5">{{ req.description }}</textarea>
+              <textarea name="description">{{ req.description }}</textarea>
             {% endif %}
-          </div>
-          <div class="form-group">
-            <label for="status">Status</label>
+            <label>Status</label>
             {% if mode is defined and mode == 'view' %}
-              <div style="padding:10px;border:1px solid var(--grey-border);border-radius:6px;background:#fff;">{{ req.status }}</div>
+              <div style="padding:12px;border:1px solid #000;border-radius:10px;background:#fff;">{{ req.status }}</div>
             {% else %}
-              <select id="status" name="status">
+              <select name="status">
                 <option value="open" {% if req.status == 'open' %}selected{% endif %}>Open</option>
                 <option value="completed" {% if req.status == 'completed' %}selected{% endif %}>Completed</option>
               </select>
             {% endif %}
-          </div>
-          <div class="form-group" style="display:flex; gap:12px; font-size:0.9rem; color: var(--primary);">
-            <div>Views: <strong>{{ req.views_count or 0 }}</strong></div>
-            <div>Shortlisted: <strong>{{ req.shortlist_count or 0 }}</strong></div>
-          </div>
-          <div class="form-row" style="margin-top:16px;">
-            {% if mode is defined and mode == 'view' %}
-              <a href="{{ url_for('boundary.pin_edit_req', req_id=req.id, page=page, per_page=per_page, q=q) }}" class="btn-submit" style="margin-right:8px;">Edit</a>
-              <a href="{{ next or url_for('boundary.pin_dashboard', page=page, per_page=per_page, q=q) }}" class="btn-cancel" style="padding: 10px 24px;">Back</a>
-            {% else %}
-              <button type="submit" class="btn-submit">Save</button>
-              <a href="{{ next or url_for('boundary.pin_dashboard', page=page, per_page=per_page, q=q) }}" class="btn-cancel" style="padding: 10px 24px;">Cancel</a>
-            {% endif %}
-          </div>
-        </form>
+            <div style="display:flex;gap:12px;margin-top:12px;color:#004aad;font-size:0.95rem;">
+              <div>Views: <strong>{{ req.views_count or 0 }}</strong></div>
+              <div>Shortlisted: <strong>{{ req.shortlist_count or 0 }}</strong></div>
+            </div>
+            <div class="actions-col" style="margin-top:18px">
+              {% if mode is defined and mode == 'view' %}
+                <a class="btn btn-yellow btn-block" href="{{ url_for('boundary.pin_edit_req', req_id=req.id, page=page, per_page=per_page, q=q) }}">Edit</a>
+                <a class="btn btn-blue btn-block" href="{{ next or url_for('boundary.pin_dashboard', page=page, per_page=per_page, q=q) }}">Back</a>
+              {% else %}
+                <button class="btn btn-yellow btn-block" type="submit">Save</button>
+                <a class="btn btn-blue btn-block" href="{{ next or url_for('boundary.pin_dashboard', page=page, per_page=per_page, q=q) }}">Cancel</a>
+              {% endif %}
+            </div>
+          </form>
+        </div>
 
-      {# HISTORY (Completed Requests) #}
       {% elif view == 'history' %}
-        <h1>Completed Requests</h1>
-        <form method="get" class="search-bar" action="{{ url_for('boundary.pin_history') }}" style="flex-wrap: wrap; gap: 12px;">
-          <div style="flex: 1; min-width: 160px;">
-            <select name="category_id" style="width: 100%; padding: 10px; border: 1px solid var(--grey-border); border-radius: 6px;">
+        <h1 class="title">Completed Requests</h1>
+        <form class="filters" method="get" action="{{ url_for('boundary.pin_history') }}" style="max-width:880px;margin-left:auto;margin-right:auto;">
+          <div class="select-wrap">
+            <select class="select-blue" name="category_id" onchange="this.form.submit()">
               <option value="">All categories</option>
               {% for c in categories %}
                 <option value="{{ c.id }}" {% if category_id and c.id == category_id %}selected{% endif %}>{{ c.name }}</option>
               {% endfor %}
             </select>
           </div>
-          <div style="flex: 1; min-width: 160px;">
-            <input type="text" name="q" value="{{ q or '' }}" placeholder="Volunteer / request / category" style="width: 100%; padding: 10px; border: 1px solid var(--grey-border); border-radius: 6px;" />
+          <div class="search" style="flex:1;min-width:180px">
+            <input type="text" name="q" value="{{ q or '' }}" placeholder="Volunteer / request / category" />
           </div>
-          <div style="flex: 1; min-width: 120px;">
-            <input type="date" name="start" value="{{ start or '' }}" style="width: 100%; padding: 10px; border: 1px solid var(--grey-border); border-radius: 6px;" />
+          <div class="search" style="min-width:140px">
+            <input type="date" name="start" value="{{ start or '' }}" />
           </div>
-          <div style="flex: 1; min-width: 120px;">
-            <input type="date" name="end" value="{{ end or '' }}" style="width: 100%; padding: 10px; border: 1px solid var(--grey-border); border-radius: 6px;" />
+          <div class="search" style="min-width:140px">
+            <input type="date" name="end" value="{{ end or '' }}" />
           </div>
-          <div style="flex: 0 0 auto;">
-            <button type="submit" style="background: var(--accent); color: var(--white); border: none; border-radius: 6px; padding: 10px 20px;">Filter</button>
-          </div>
+          <button class="btn-orange" type="submit" style="min-width:140px">Filter</button>
         </form>
         {% if items and items|length > 0 %}
-          <div class="table-responsive">
+          <div class="tablewrap">
             <table>
               <thead>
                 <tr>
